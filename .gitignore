@@ -1,0 +1,17 @@
+# Python / Poetry
+**/__pycache__/
+**/*.py\[cdo\]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+**/dist/
+**/build/
+
+# Node / React
+src/app/webapp/node_modules/
+src/app/webapp/build/
+src/app/webapp/dist/
+
+**/prompts/
+
+.idea/

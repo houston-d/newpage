@@ -1,0 +1,7 @@
+__pycache__/
+*.py\[cdo\]
+*.pyd
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
