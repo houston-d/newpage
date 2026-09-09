@@ -62,3 +62,50 @@ export async function getHealthStatus(options = {}) {
     message: payload.message,
   };
 }
+
+export async function queryJobBoardSummary(options = {}) {
+  const query = options.query ?? "Summarize the current open roles on this job board.";
+  const response = await fetch(`${API_BASE_URL}/ai/query_job_board/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+    signal: options.signal,
+  });
+  assertJsonResponse(response, "/ai/query_job_board/", "Failed to generate summary");
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(buildHttpErrorMessage("Failed to generate summary", response.status));
+  }
+
+  if (typeof payload?.message !== "string") {
+    throw new Error("Invalid query_job_board payload received from job-service.");
+  }
+
+  return payload.message;
+}
+
+export async function analyseJobSummary(jd, options = {}) {
+  const response = await fetch(`${API_BASE_URL}/ai/analyse_job`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ jd }),
+    signal: options.signal,
+  });
+  assertJsonResponse(response, "/ai/analyse_job", "Failed to generate summary");
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(buildHttpErrorMessage("Failed to generate summary", response.status));
+  }
+
+  if (typeof payload?.message !== "string") {
+    throw new Error("Invalid analyse_job payload received from job-service.");
+  }
+
+  return payload.message;
+}

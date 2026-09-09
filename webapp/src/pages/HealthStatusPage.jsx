@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { Link } from "react-router-dom";
 
 import HealthStatus from "../components/HealthStatus";
 import { getHealthStatus } from "../services/api";
@@ -17,9 +18,9 @@ export default function HealthStatusPage() {
         <p className="eyebrow">NewPage Careers</p>
         <h1>Health status</h1>
         <p className="hero-copy">Live status from the backend /health endpoint.</p>
-        <a className="back-link" href="/jobs">
+        <Link className="back-link" to="/jobs">
           Back to all roles
-        </a>
+        </Link>
       </header>
 
       <HealthStatus health={health} isLoading={isLoading} errorMessage={errorMessage} />

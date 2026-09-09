@@ -1,7 +1,24 @@
 import { useCallback } from "react";
+import { Link } from "react-router-dom";
 
-import { getJobs } from "../services/api";
+import AiSummaryAccordion from "../components/AiSummaryAccordion";
+import { getJobs, queryJobBoardSummary } from "../services/api";
 import useAsyncResource from "../hooks/useAsyncResource";
+
+const JOBS_SUMMARY_CACHE_KEY = "jobs-page";
+const JOB_DESCRIPTION_PREVIEW_LIMIT = 180;
+
+function getJobDescriptionPreview(description) {
+  if (typeof description !== "string") {
+    return "";
+  }
+
+  if (description.length <= JOB_DESCRIPTION_PREVIEW_LIMIT) {
+    return description;
+  }
+
+  return `${description.slice(0, JOB_DESCRIPTION_PREVIEW_LIMIT)}...`;
+}
 
 export default function JobsPage() {
   const loadJobs = useCallback(({ signal }) => getJobs({ signal }), []);
@@ -18,6 +35,8 @@ export default function JobsPage() {
       {isLoading ? <p className="state">Loading jobs...</p> : null}
       {errorMessage ? <p className="state error">{errorMessage}</p> : null}
 
+      <AiSummaryAccordion cacheKey={JOBS_SUMMARY_CACHE_KEY} generateSummary={queryJobBoardSummary} />
+
       {!isLoading && !errorMessage ? (
         jobs && jobs.length > 0 ? (
           <section className="jobs-grid" aria-label="Available jobs">
@@ -29,10 +48,10 @@ export default function JobsPage() {
                 </div>
                 <h2>{job.title}</h2>
                 <p className="salary">{job.salary}</p>
-                <p className="description">{job.jd}</p>
-                <a className="job-link" href={`/jobs/${encodeURIComponent(job.id)}`}>
+                <p className="description">{getJobDescriptionPreview(job.jd)}</p>
+                <Link className="job-link" to={`/jobs/${encodeURIComponent(job.id)}`}>
                   View role
-                </a>
+                </Link>
               </article>
             ))}
           </section>
@@ -41,9 +60,9 @@ export default function JobsPage() {
         )
       ) : null}
 
-      <a className="back-link" href="/health">
+      <Link className="back-link" to="/health">
         View backend health
-      </a>
+      </Link>
     </main>
   );
 }

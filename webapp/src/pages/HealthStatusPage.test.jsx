@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 
 import HealthStatusPage from "./HealthStatusPage";
 import { getHealthStatus } from "../services/api";
@@ -7,6 +8,14 @@ import { getHealthStatus } from "../services/api";
 vi.mock("../services/api", () => ({
   getHealthStatus: vi.fn(),
 }));
+
+function renderHealthStatusPage() {
+  return render(
+    <MemoryRouter>
+      <HealthStatusPage />
+    </MemoryRouter>,
+  );
+}
 
 describe("HealthStatusPage", () => {
   beforeEach(() => {
@@ -20,7 +29,7 @@ describe("HealthStatusPage", () => {
       message: "OK",
     });
 
-    render(<HealthStatusPage />);
+    renderHealthStatusPage();
 
     expect(screen.getByRole("heading", { name: "Health status", level: 1 })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to all roles" }).getAttribute("href")).toBe("/jobs");
@@ -35,7 +44,7 @@ describe("HealthStatusPage", () => {
         }),
     );
 
-    render(<HealthStatusPage />);
+    renderHealthStatusPage();
 
     expect(screen.getByText("Checking service health...")).toBeTruthy();
 
@@ -53,7 +62,7 @@ describe("HealthStatusPage", () => {
   it("shows API errors", async () => {
     getHealthStatus.mockRejectedValue(new Error("Service is unavailable"));
 
-    render(<HealthStatusPage />);
+    renderHealthStatusPage();
 
     expect(await screen.findByText("Unable to load health status.")).toBeTruthy();
   });
@@ -61,7 +70,7 @@ describe("HealthStatusPage", () => {
   it("shows a fallback error message for non-Error rejections", async () => {
     getHealthStatus.mockRejectedValue("bad response");
 
-    render(<HealthStatusPage />);
+    renderHealthStatusPage();
 
     expect(await screen.findByText("Unable to load health status.")).toBeTruthy();
   });
