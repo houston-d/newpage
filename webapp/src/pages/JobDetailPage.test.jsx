@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import JobDetailPage from "./JobDetailPage";
 import { analyseJobSummary, getJobById } from "../services/api";
@@ -8,6 +9,14 @@ vi.mock("../services/api", () => ({
   getJobById: vi.fn(),
   analyseJobSummary: vi.fn(),
 }));
+
+function renderJobDetailPage(jobId) {
+  return render(
+    <MemoryRouter>
+      <JobDetailPage jobId={jobId} />
+    </MemoryRouter>,
+  );
+}
 
 describe("JobDetailPage", () => {
   beforeEach(() => {
@@ -25,7 +34,7 @@ describe("JobDetailPage", () => {
       jd: "Build APIs.",
     });
 
-    render(<JobDetailPage jobId="backend-engineer" />);
+    renderJobDetailPage("backend-engineer");
 
     expect(screen.getByRole("heading", { name: "Job details", level: 1 })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to all roles" }).getAttribute("href")).toBe("/jobs");
@@ -41,7 +50,7 @@ describe("JobDetailPage", () => {
       jd: "Build APIs.",
     });
 
-    render(<JobDetailPage jobId="backend-engineer" />);
+    renderJobDetailPage("backend-engineer");
 
     expect(screen.getByText("Loading job...")).toBeTruthy();
     expect(await screen.findByText("Backend Engineer")).toBeTruthy();
@@ -70,7 +79,7 @@ describe("JobDetailPage", () => {
         }),
     );
 
-    render(<JobDetailPage jobId="backend-engineer" />);
+    renderJobDetailPage("backend-engineer");
 
     expect(await screen.findByText("Backend Engineer")).toBeTruthy();
     expect(screen.getByText("AI summary")).toBeTruthy();
@@ -97,7 +106,7 @@ describe("JobDetailPage", () => {
     });
     analyseJobSummary.mockRejectedValue(new Error("Model unavailable"));
 
-    render(<JobDetailPage jobId="backend-engineer" />);
+    renderJobDetailPage("backend-engineer");
 
     expect(await screen.findByText("Backend Engineer")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
@@ -117,7 +126,7 @@ describe("JobDetailPage", () => {
     window.localStorage.setItem("ai-summary:job-detail:backend-engineer", "Cached backend summary.");
     window.localStorage.setItem("ai-summary:job-detail:data-engineer", "Different job summary.");
 
-    const { rerender } = render(<JobDetailPage jobId="backend-engineer" />);
+    const { rerender } = renderJobDetailPage("backend-engineer");
     expect(await screen.findByText("Cached backend summary.")).toBeTruthy();
 
     getJobById.mockResolvedValue({
@@ -128,14 +137,18 @@ describe("JobDetailPage", () => {
       salary: "£90k",
       jd: "Build data pipelines.",
     });
-    rerender(<JobDetailPage jobId="data-engineer" />);
+    rerender(
+      <MemoryRouter>
+        <JobDetailPage jobId="data-engineer" />
+      </MemoryRouter>,
+    );
     expect(await screen.findByText("Different job summary.")).toBeTruthy();
   });
 
   it("shows a safe fallback message for API errors", async () => {
     getJobById.mockRejectedValue(new Error("Job not found"));
 
-    render(<JobDetailPage jobId="missing-job" />);
+    renderJobDetailPage("missing-job");
 
     expect(await screen.findByText("Unable to load job.")).toBeTruthy();
   });
@@ -143,7 +156,7 @@ describe("JobDetailPage", () => {
   it("shows fallback error message for non-Error rejections", async () => {
     getJobById.mockRejectedValue("bad request");
 
-    render(<JobDetailPage jobId="bad-job" />);
+    renderJobDetailPage("bad-job");
 
     expect(await screen.findByText("Unable to load job.")).toBeTruthy();
   });

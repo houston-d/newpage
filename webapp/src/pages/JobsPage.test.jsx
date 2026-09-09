@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import JobsPage from "./JobsPage";
 import { getJobs, queryJobBoardSummary } from "../services/api";
@@ -8,6 +9,14 @@ vi.mock("../services/api", () => ({
   getJobs: vi.fn(),
   queryJobBoardSummary: vi.fn(),
 }));
+
+function renderJobsPage() {
+  return render(
+    <MemoryRouter>
+      <JobsPage />
+    </MemoryRouter>,
+  );
+}
 
 describe("JobsPage", () => {
   beforeEach(() => {
@@ -18,7 +27,7 @@ describe("JobsPage", () => {
   it("renders the page header and health link", () => {
     getJobs.mockResolvedValue([]);
 
-    render(<JobsPage />);
+    renderJobsPage();
 
     expect(screen.getByRole("heading", { name: "Open roles", level: 1 })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View backend health" }).getAttribute("href")).toBe("/health");
@@ -33,7 +42,7 @@ describe("JobsPage", () => {
         }),
     );
 
-    render(<JobsPage />);
+    renderJobsPage();
 
     expect(screen.getByText("Loading jobs...")).toBeTruthy();
 
@@ -57,19 +66,19 @@ describe("JobsPage", () => {
   it("shows empty state when no jobs are available", async () => {
     getJobs.mockResolvedValue([]);
 
-    render(<JobsPage />);
+    renderJobsPage();
 
     expect(await screen.findByText("No jobs are currently available.")).toBeTruthy();
   });
 
   it("shows safe fallback messages for API and non-Error failures", async () => {
     getJobs.mockRejectedValueOnce(new Error("Jobs endpoint unavailable"));
-    const { unmount } = render(<JobsPage />);
+    const { unmount } = renderJobsPage();
     expect(await screen.findByText("Unable to load jobs.")).toBeTruthy();
     unmount();
 
     getJobs.mockRejectedValueOnce("bad payload");
-    render(<JobsPage />);
+    renderJobsPage();
     expect(await screen.findByText("Unable to load jobs.")).toBeTruthy();
   });
 
@@ -83,7 +92,7 @@ describe("JobsPage", () => {
         }),
     );
 
-    render(<JobsPage />);
+    renderJobsPage();
 
     expect(screen.getByText("AI summary")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
@@ -100,7 +109,7 @@ describe("JobsPage", () => {
     getJobs.mockResolvedValue([]);
     queryJobBoardSummary.mockRejectedValue(new Error("Model unavailable"));
 
-    render(<JobsPage />);
+    renderJobsPage();
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
     expect(await screen.findByText("failed to generate summary")).toBeTruthy();
@@ -110,11 +119,29 @@ describe("JobsPage", () => {
     getJobs.mockResolvedValue([]);
     window.localStorage.setItem("ai-summary:jobs-page", "Cached jobs summary.");
 
-    const { unmount } = render(<JobsPage />);
+    const { unmount } = renderJobsPage();
     expect(await screen.findByText("Cached jobs summary.")).toBeTruthy();
     unmount();
 
-    render(<JobsPage />);
+    renderJobsPage();
     expect(await screen.findByText("Cached jobs summary.")).toBeTruthy();
+  });
+
+  it("truncates long job descriptions in the list preview", async () => {
+    getJobs.mockResolvedValue([
+      {
+        id: "senior-engineer",
+        company: "NewPage",
+        location: "London",
+        title: "Senior Engineer",
+        salary: "£110k",
+        jd: "A".repeat(200),
+      },
+    ]);
+
+    renderJobsPage();
+
+    expect(await screen.findByText("Senior Engineer")).toBeTruthy();
+    expect(screen.getByText(`${"A".repeat(180)}...`)).toBeTruthy();
   });
 });
