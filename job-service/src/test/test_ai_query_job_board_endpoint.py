@@ -191,6 +191,31 @@ class TestQueryJobBoardFunction:
 
         assert len(result.sources) == 1
 
+    def test_derives_source_id_when_ranked_job_has_no_id(self):
+        """Jobs lacking an explicit id should still return a stable source id from source_file."""
+        response = Response()
+        payload = QueryJobBoardRequest(query=SAMPLE_QUERY, top_k=1)
+        jobs_without_id = (
+            {
+                "title": "Senior Backend Engineer",
+                "location": "London",
+                "company": "Acme Corp",
+                "salary": "£70,000 - £90,000",
+                "source_file": "acme_backend.json",
+                "jd": "We are looking for a Senior Backend Engineer with strong Python experience.",
+            },
+        )
+        with (
+            patch("app.api.ai.model_service.is_loaded", return_value=True),
+            patch("app.api.ai._load_job_descriptions_cached", return_value=jobs_without_id),
+            patch("app.api.ai.model_service.generate_text", return_value="ok"),
+        ):
+            result = query_job_board(payload, response)
+
+        assert result.status == 200
+        assert len(result.sources) == 1
+        assert result.sources[0].id == "acme_backend"
+
     def test_does_not_suppress_unexpected_exception_types(self):
         """Exceptions outside the caught set (e.g. ZeroDivisionError) propagate to the caller."""
         response = Response()

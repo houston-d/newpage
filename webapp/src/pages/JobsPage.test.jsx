@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import JobsPage from "./JobsPage";
-import { getJobs } from "../services/api";
+import { getJobs, queryJobBoardSummary } from "../services/api";
 
 vi.mock("../services/api", () => ({
   getJobs: vi.fn(),
+  queryJobBoardSummary: vi.fn(),
 }));
 
 describe("JobsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   it("renders the page header and health link", () => {
@@ -69,5 +71,50 @@ describe("JobsPage", () => {
     getJobs.mockRejectedValueOnce("bad payload");
     render(<JobsPage />);
     expect(await screen.findByText("Unable to load jobs.")).toBeTruthy();
+  });
+
+  it("shows summary accordion and generates AI summary", async () => {
+    let resolveSummaryRequest;
+    getJobs.mockResolvedValue([]);
+    queryJobBoardSummary.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSummaryRequest = resolve;
+        }),
+    );
+
+    render(<JobsPage />);
+
+    expect(screen.getByText("AI summary")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(screen.getByText("Generating summary...")).toBeTruthy();
+    expect(queryJobBoardSummary).toHaveBeenCalledTimes(1);
+
+    resolveSummaryRequest("Summary of open roles.");
+    expect(await screen.findByText("Summary of open roles.")).toBeTruthy();
+    expect(window.localStorage.getItem("ai-summary:jobs-page")).toBe("Summary of open roles.");
+  });
+
+  it('shows "failed to generate summary" when generation fails', async () => {
+    getJobs.mockResolvedValue([]);
+    queryJobBoardSummary.mockRejectedValue(new Error("Model unavailable"));
+
+    render(<JobsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(await screen.findByText("failed to generate summary")).toBeTruthy();
+  });
+
+  it("restores cached jobs summary after remount", async () => {
+    getJobs.mockResolvedValue([]);
+    window.localStorage.setItem("ai-summary:jobs-page", "Cached jobs summary.");
+
+    const { unmount } = render(<JobsPage />);
+    expect(await screen.findByText("Cached jobs summary.")).toBeTruthy();
+    unmount();
+
+    render(<JobsPage />);
+    expect(await screen.findByText("Cached jobs summary.")).toBeTruthy();
   });
 });

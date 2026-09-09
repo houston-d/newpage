@@ -1,11 +1,33 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
-import { getJobs } from "../services/api";
+import { getJobs, queryJobBoardSummary } from "../services/api";
+import { getCachedSummary, setCachedSummary } from "../services/summaryCache";
 import useAsyncResource from "../hooks/useAsyncResource";
+
+const JOBS_SUMMARY_CACHE_KEY = "jobs-page";
 
 export default function JobsPage() {
   const loadJobs = useCallback(({ signal }) => getJobs({ signal }), []);
   const { data: jobs, isLoading, errorMessage } = useAsyncResource(loadJobs, "Unable to load jobs.");
+  const [summary, setSummary] = useState(() => getCachedSummary(JOBS_SUMMARY_CACHE_KEY));
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [summaryErrorMessage, setSummaryErrorMessage] = useState("");
+
+  const handleGenerateSummary = async () => {
+    setIsGeneratingSummary(true);
+    setSummaryErrorMessage("");
+
+    try {
+      const generatedSummary = await queryJobBoardSummary();
+      setSummary(generatedSummary);
+      setCachedSummary(JOBS_SUMMARY_CACHE_KEY, generatedSummary);
+    } catch (error) {
+      console.error(error);
+      setSummaryErrorMessage("failed to generate summary");
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
 
   return (
     <main className="page">
@@ -17,6 +39,23 @@ export default function JobsPage() {
 
       {isLoading ? <p className="state">Loading jobs...</p> : null}
       {errorMessage ? <p className="state error">{errorMessage}</p> : null}
+
+      <details className="summary-accordion">
+        <summary>AI summary</summary>
+        <div className="summary-panel">
+          <button
+            className="summary-generate-button"
+            type="button"
+            onClick={handleGenerateSummary}
+            disabled={isGeneratingSummary}
+          >
+            {isGeneratingSummary ? "Generating..." : "Generate"}
+          </button>
+          {isGeneratingSummary ? <p className="state">Generating summary...</p> : null}
+          {summaryErrorMessage ? <p className="state error">{summaryErrorMessage}</p> : null}
+          {summary ? <p className="summary-text">{summary}</p> : null}
+        </div>
+      </details>
 
       {!isLoading && !errorMessage ? (
         jobs && jobs.length > 0 ? (
