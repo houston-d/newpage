@@ -104,6 +104,7 @@ def _tokenize(text: str) -> list[str]:
 
 def _normalize_job(raw_job: dict, source_file: str) -> dict[str, str]:
     return {
+        "id": str(raw_job.get("id", Path(source_file).stem)).strip(),
         "title": str(raw_job.get("title", "")).strip(),
         "location": str(raw_job.get("location", "")).strip(),
         "company": str(raw_job.get("company", "")).strip(),
@@ -364,12 +365,12 @@ def query_job_board(payload: QueryJobBoardRequest, response: Response) -> QueryJ
 
     response_sources = [
         QuerySource(
-            id=job["id"],
-            title=job["title"],
-            location=job["location"],
-            company=job["company"],
-            salary=job["salary"],
-            source_file=job["source_file"],
+            id=str(job.get("id", Path(str(job.get("source_file", ""))).stem)).strip(),
+            title=str(job.get("title", "")).strip(),
+            location=str(job.get("location", "")).strip(),
+            company=str(job.get("company", "")).strip(),
+            salary=str(job.get("salary", "")).strip(),
+            source_file=str(job.get("source_file", "")).strip(),
         )
         for job in relevant_jobs
     ]

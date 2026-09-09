@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import App from "./App";
 
@@ -20,31 +21,30 @@ vi.mock("./pages/JobDetailPage", () => ({
 }));
 
 describe("App", () => {
-  beforeEach(() => {
-    window.history.pushState({}, "", "/");
-  });
+  const renderAtRoute = (route) =>
+    render(
+      <MemoryRouter initialEntries={[route]}>
+        <App />
+      </MemoryRouter>,
+    );
 
   it("renders jobs page for /jobs", () => {
-    window.history.pushState({}, "", "/jobs");
-    render(<App />);
+    renderAtRoute("/jobs");
     expect(screen.getByText("Jobs page")).toBeTruthy();
   });
 
   it("renders health page for /health", () => {
-    window.history.pushState({}, "", "/health");
-    render(<App />);
+    renderAtRoute("/health");
     expect(screen.getByText("Health page")).toBeTruthy();
   });
 
   it("renders job details for encoded job id", () => {
-    window.history.pushState({}, "", "/jobs/backend%2Fengineer");
-    render(<App />);
+    renderAtRoute("/jobs/backend%2Fengineer");
     expect(screen.getByText("Job detail: backend/engineer")).toBeTruthy();
   });
 
   it("falls back to not found for malformed job id encoding", () => {
-    window.history.pushState({}, "", "/jobs/%E0%A4%A");
-    render(<App />);
+    renderAtRoute("/jobs/%E0%A4%A");
     expect(screen.getByText("Not found page")).toBeTruthy();
   });
 });

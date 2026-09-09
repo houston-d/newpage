@@ -1,25 +1,29 @@
+import { Route, Routes, useParams } from "react-router-dom";
+
 import JobDetailPage from "./pages/JobDetailPage";
 import JobsPage from "./pages/JobsPage";
 import HealthStatusPage from "./pages/HealthStatusPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
+function JobDetailRoute() {
+  const { jobId } = useParams();
+  const encodedId = jobId ?? "";
+
+  try {
+    const decodedId = decodeURIComponent(encodedId);
+    return <JobDetailPage jobId={decodedId} />;
+  } catch {
+    return <NotFoundPage />;
+  }
+}
+
 export default function App() {
-  if (window.location.pathname === "/jobs") {
-    return <JobsPage />;
-  }
-
-  if (window.location.pathname === "/health") {
-    return <HealthStatusPage />;
-  }
-
-  const jobPathMatch = window.location.pathname.match(/^\/jobs\/([^/]+)$/);
-  if (jobPathMatch) {
-    try {
-      return <JobDetailPage jobId={decodeURIComponent(jobPathMatch[1])} />;
-    } catch {
-      return <NotFoundPage />;
-    }
-  }
-
-  return <NotFoundPage />;
+  return (
+    <Routes>
+      <Route path="/jobs" element={<JobsPage />} />
+      <Route path="/health" element={<HealthStatusPage />} />
+      <Route path="/jobs/:jobId" element={<JobDetailRoute />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  );
 }
