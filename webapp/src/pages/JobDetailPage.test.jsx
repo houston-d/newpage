@@ -63,6 +63,23 @@ describe("JobDetailPage", () => {
     );
   });
 
+  it("renders markdown-style bold text in the description", async () => {
+    getJobById.mockResolvedValue({
+      id: "backend-engineer",
+      company: "NewPage",
+      location: "Remote",
+      title: "Backend Engineer",
+      salary: "£95k",
+      jd: "**About the Role**\nBuild APIs.",
+    });
+
+    renderJobDetailPage("backend-engineer");
+
+    expect(await screen.findByText("Backend Engineer")).toBeTruthy();
+    expect(screen.getByText("About the Role", { selector: "strong" })).toBeTruthy();
+    expect(screen.getByText("Build APIs.")).toBeTruthy();
+  });
+
   it("shows AI summary accordion and generates job summary", async () => {
     getJobById.mockResolvedValue({
       id: "backend-engineer",
