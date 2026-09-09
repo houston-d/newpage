@@ -33,8 +33,6 @@ Copy `.env.example` to `.env` and adjust values:
 ## Project structure
 
 - `src/main.jsx`: React entrypoint
-- `src/App.jsx`: root app component
-- `src/components/HealthStatus.jsx`: simple backend health status card
-- `src/services/api.js`: tiny API helpers
-- `src/styles/app.css`: app styles
-
+- `src/App.jsx`: app routes (including `/jobs` and `/jobs/{id}`)
+- `src/services/api.js`: API helpers for backend requests
+- `src/styles/app.css`: dark-green app styles

@@ -364,6 +364,7 @@ def query_job_board(payload: QueryJobBoardRequest, response: Response) -> QueryJ
 
     response_sources = [
         QuerySource(
+            id=job["id"],
             title=job["title"],
             location=job["location"],
             company=job["company"],

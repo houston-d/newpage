@@ -1,0 +1,206 @@
+:root {
+  color-scheme: dark;
+  font-family: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  background-color: #04190f;
+  color: #e9f8ee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #0f5535 0%, #052216 45%, #03120b 100%);
+  color: inherit;
+}
+
+a {
+  color: #6cf3ae;
+}
+
+.page {
+  width: min(1120px, 92vw);
+  margin: 0 auto;
+  padding: 3.5rem 0 4rem;
+}
+
+.hero {
+  margin-bottom: 2rem;
+}
+
+.eyebrow {
+  margin: 0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aeec4;
+  font-weight: 600;
+}
+
+h1 {
+  margin: 0.4rem 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+}
+
+.hero-copy {
+  margin: 0;
+  color: #c2ecd6;
+  max-width: 64ch;
+}
+
+.jobs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.job-card {
+  background: linear-gradient(160deg, rgba(11, 62, 39, 0.94), rgba(6, 30, 20, 0.95));
+  border: 1px solid rgba(135, 230, 179, 0.24);
+  border-radius: 14px;
+  padding: 1.2rem;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+}
+
+.job-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #b9e8ce;
+  font-size: 0.8rem;
+}
+
+.job-card h2 {
+  margin: 0.7rem 0 0.45rem;
+  font-size: 1rem;
+}
+
+.salary {
+  margin: 0;
+  color: #7cf3b7;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.description {
+  margin: 0.9rem 0 0;
+  color: #d5f2e2;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.job-link {
+  display: inline-block;
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+
+.job-detail {
+  max-width: 880px;
+  background: linear-gradient(160deg, rgba(11, 62, 39, 0.94), rgba(6, 30, 20, 0.95));
+  border: 1px solid rgba(135, 230, 179, 0.24);
+  border-radius: 14px;
+  padding: 1.4rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+}
+
+.job-detail h2 {
+  margin: 0.7rem 0 0.45rem;
+  font-size: 1.5rem;
+}
+
+.detail-description {
+  margin: 1rem 0 0;
+  color: #d5f2e2;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.apply-button {
+  margin-top: 1.2rem;
+  border: 1px solid rgba(108, 243, 174, 0.6);
+  background: rgba(108, 243, 174, 0.12);
+  color: #cffff0;
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.state {
+  margin: 1.2rem 0;
+  color: #c3ecd7;
+}
+
+.state.error {
+  color: #ffb9b9;
+}
+
+.not-found {
+  border: 1px solid rgba(135, 230, 179, 0.22);
+  border-radius: 14px;
+  background: rgba(9, 41, 27, 0.9);
+  padding: 1.5rem;
+}
+
+.not-found h1 {
+  margin-top: 0;
+}
+
+.health-card {
+  max-width: 680px;
+  border: 1px solid rgba(135, 230, 179, 0.24);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(11, 62, 39, 0.94), rgba(6, 30, 20, 0.95));
+  padding: 1.4rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+}
+
+.health-badge {
+  display: inline-block;
+  margin: 0 0 0.7rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.health-badge.healthy {
+  color: #07341e;
+  background: #74efaf;
+}
+
+.health-badge.unhealthy {
+  color: #3b0b0b;
+  background: #ffb9b9;
+}
+
+.health-card h2 {
+  margin: 0 0 0.4rem;
+}
+
+.health-message {
+  margin: 0;
+  color: #d5f2e2;
+}
+
+.health-meta {
+  margin: 0.8rem 0 0;
+  color: #b9e8ce;
+  font-size: 0.86rem;
+}

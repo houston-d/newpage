@@ -17,6 +17,7 @@ class QueryJobBoardRequest(BaseModel):
 
 
 class QuerySource(BaseModel):
+    id: str
     title: str
     location: str
     company: str
@@ -31,3 +32,21 @@ class ApiResponse(BaseModel):
 
 class QueryJobBoardResponse(ApiResponse):
     sources: list[QuerySource] = Field(default_factory=list)
+
+
+class Job(BaseModel):
+    id: str
+    title: str
+    location: str
+    company: str
+    salary: str
+    jd: str
+    source_file: str
+
+
+class JobsResponse(ApiResponse):
+    jobs: list[Job] = Field(default_factory=list)
+
+
+class JobResponse(ApiResponse):
+    job: Job | None = None
