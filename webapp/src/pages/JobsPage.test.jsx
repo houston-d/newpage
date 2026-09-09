@@ -31,6 +31,7 @@ describe("JobsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Open roles", level: 1 })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View backend health" }).getAttribute("href")).toBe("/health");
+    expect(screen.getByRole("link", { name: "Open AI chat" }).getAttribute("href")).toBe("/chat");
   });
 
   it("shows loading state before rendering jobs", async () => {

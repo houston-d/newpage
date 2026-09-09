@@ -18,6 +18,7 @@ from transformers import GenerationConfig, pipeline
 from .schemas import (
     AnalyseJobRequest,
     ApiResponse,
+    ChatRequest,
     LoadModelRequest,
     QueryJobBoardRequest,
     QueryJobBoardResponse,
@@ -206,6 +207,13 @@ def _build_rag_context(jobs: list[dict[str, str]]) -> str:
     return "\n\n".join(context_chunks)
 
 
+def _build_chat_retrieval_query(cv: str, message_history: list[dict[str, str]]) -> str:
+    formatted_history = "\n".join(
+        f"{message['role']}: {message['content']}" for message in message_history if message.get("content")
+    )
+    return f"CV:\n{cv}\n\nConversation:\n{formatted_history}"
+
+
 def require_admin_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
     configured_api_key = os.getenv(ADMIN_API_KEY_ENV)
     if not configured_api_key:
@@ -376,3 +384,57 @@ def query_job_board(payload: QueryJobBoardRequest, response: Response) -> QueryJ
     ]
     response.status_code = status.HTTP_200_OK
     return QueryJobBoardResponse(status=200, message=output, sources=response_sources)
+
+
+@router.post("/chat")
+def chat(payload: ChatRequest, response: Response) -> ApiResponse:
+    if not model_service.is_loaded():
+        logger.error("Model not set")
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return ApiResponse(status=503, message="Model not loaded")
+
+    try:
+        jobs = list(_load_job_descriptions_cached())
+    except (FileNotFoundError, ValueError, json.JSONDecodeError, OSError):
+        logger.exception("Failed to load job descriptions")
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return ApiResponse(status=500, message="Unable to load job descriptions")
+
+    message_history = [message.model_dump() for message in payload.message_history]
+    retrieval_query = _build_chat_retrieval_query(payload.cv, message_history)
+    relevant_jobs = _rank_relevant_jobs(retrieval_query, jobs, top_k=3)
+    rag_context = _build_rag_context(relevant_jobs) if relevant_jobs else "No relevant jobs were found."
+    chat_prompt = prompts.get("chat", {})
+
+    system_prompt = chat_prompt.get(
+        "system",
+        (
+            "You are a job recruitment specialist. Use the CV and relevant jobs to guide your answer. "
+            "If information is missing, say so clearly."
+        ),
+    )
+
+    messages: list[dict[str, str]] = [
+        {
+            "role": "system",
+            "content": (
+                f"{system_prompt}{payload.cv}\n\n"
+                f"Relevant jobs from the job board:\n{rag_context}\n\n"
+                "Use the conversation history and this context to answer the user."
+            ),
+        }
+    ]
+    preface_prompt = chat_prompt.get("user", "").strip()
+    if preface_prompt:
+        messages.append({"role": "user", "content": preface_prompt})
+    messages.extend(message_history)
+
+    try:
+        output = model_service.generate_text(messages)
+    except (ValueError, RuntimeError, KeyError, TypeError):
+        logger.exception("Failed to answer chat request")
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        return ApiResponse(status=500, message="Unable to answer chat request")
+
+    response.status_code = status.HTTP_200_OK
+    return ApiResponse(status=200, message=output)

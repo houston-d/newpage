@@ -109,3 +109,29 @@ export async function analyseJobSummary(jd, options = {}) {
 
   return payload.message;
 }
+
+export async function chatWithCv({ cv, messageHistory }, options = {}) {
+  const response = await fetch(`${API_BASE_URL}/ai/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      cv,
+      message_history: messageHistory,
+    }),
+    signal: options.signal,
+  });
+  assertJsonResponse(response, "/ai/chat", "Failed to send chat message");
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(buildHttpErrorMessage("Failed to send chat message", response.status));
+  }
+
+  if (typeof payload?.message !== "string") {
+    throw new Error("Invalid chat payload received from job-service.");
+  }
+
+  return payload.message;
+}
