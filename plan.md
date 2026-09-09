@@ -32,3 +32,9 @@ I will initially require the user to upload their CV and then paste in a JD. Thi
 - [ ] Allow model selection
 - [ ] Containerisation / Terraform etc for reproducability
 
+
+## TODO
+
+- No timeout/cancellation handling for potentially long-running inference (pipe(...) call) — consider running in a background task or async executor with a timeout so requests don't block the event loop (FastAPI sync def routes run in a thread pool by default, but there's no upper bound on generation time).
+- Will likely need to restructure the application
+- Lock on model for multiple users
