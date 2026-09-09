@@ -38,3 +38,4 @@ I will initially require the user to upload their CV and then paste in a JD. Thi
 - No timeout/cancellation handling for potentially long-running inference (pipe(...) call) — consider running in a background task or async executor with a timeout so requests don't block the event loop (FastAPI sync def routes run in a thread pool by default, but there's no upper bound on generation time).
 - Will likely need to restructure the application
 - Lock on model for multiple users
+- update README with instructions for running the project locally
