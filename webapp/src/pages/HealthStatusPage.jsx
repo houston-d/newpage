@@ -1,41 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import HealthStatus from "../components/HealthStatus";
 import { getHealthStatus } from "../services/api";
+import useAsyncResource from "../hooks/useAsyncResource";
 
 export default function HealthStatusPage() {
-  const [health, setHealth] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadHealthStatus = async () => {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      try {
-        const loadedHealth = await getHealthStatus();
-        if (isActive) {
-          setHealth(loadedHealth);
-        }
-      } catch (error) {
-        if (isActive) {
-          setErrorMessage(error instanceof Error ? error.message : "Unable to load health status.");
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadHealthStatus();
-    return () => {
-      isActive = false;
-    };
-  }, []);
+  const loadHealthStatus = useCallback(({ signal }) => getHealthStatus({ signal }), []);
+  const { data: health, isLoading, errorMessage } = useAsyncResource(
+    loadHealthStatus,
+    "Unable to load health status.",
+  );
 
   return (
     <main className="page">

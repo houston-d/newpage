@@ -45,15 +45,18 @@ describe("JobDetailPage", () => {
     expect(await screen.findByText("Backend Engineer")).toBeTruthy();
     expect(screen.getByText("Build APIs.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Apply" })).toBeTruthy();
-    expect(getJobById).toHaveBeenCalledWith("backend-engineer");
+    expect(getJobById).toHaveBeenCalledWith(
+      "backend-engineer",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
-  it("shows API errors", async () => {
+  it("shows a safe fallback message for API errors", async () => {
     getJobById.mockRejectedValue(new Error("Job not found"));
 
     render(<JobDetailPage jobId="missing-job" />);
 
-    expect(await screen.findByText("Job not found")).toBeTruthy();
+    expect(await screen.findByText("Unable to load job.")).toBeTruthy();
   });
 
   it("shows fallback error message for non-Error rejections", async () => {

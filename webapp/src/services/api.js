@@ -1,16 +1,23 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
-export async function getJobs() {
-  const response = await fetch(`${API_BASE_URL}/jobs`);
+function assertJsonResponse(response, endpoint, fallbackErrorMessage) {
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
-    throw new Error(`Unexpected response from job-service (/jobs): HTTP ${response.status}`);
+    throw new Error(`${fallbackErrorMessage} (unexpected response format from ${endpoint}).`);
   }
+}
+
+function buildHttpErrorMessage(baseMessage, status) {
+  return `${baseMessage} (HTTP ${status}).`;
+}
+
+export async function getJobs(options = {}) {
+  const response = await fetch(`${API_BASE_URL}/jobs`, { signal: options.signal });
+  assertJsonResponse(response, "/jobs", "Unable to load jobs");
   const payload = await response.json();
 
   if (!response.ok) {
-    const message = payload?.message ?? `Request failed with status ${response.status}`;
-    throw new Error(message);
+    throw new Error(buildHttpErrorMessage("Unable to load jobs", response.status));
   }
 
   if (!Array.isArray(payload?.jobs)) {
@@ -20,17 +27,13 @@ export async function getJobs() {
   return payload.jobs;
 }
 
-export async function getJobById(id) {
-  const response = await fetch(`${API_BASE_URL}/jobs/${encodeURIComponent(id)}`);
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw new Error(`Unexpected response from job-service (/jobs/${id}): HTTP ${response.status}`);
-  }
+export async function getJobById(id, options = {}) {
+  const response = await fetch(`${API_BASE_URL}/jobs/${encodeURIComponent(id)}`, { signal: options.signal });
+  assertJsonResponse(response, "/jobs/:id", "Unable to load job");
   const payload = await response.json();
 
   if (!response.ok) {
-    const message = payload?.message ?? `Request failed with status ${response.status}`;
-    throw new Error(message);
+    throw new Error(buildHttpErrorMessage("Unable to load job", response.status));
   }
 
   if (!payload?.job || typeof payload.job !== "object") {
@@ -40,13 +43,14 @@ export async function getJobById(id) {
   return payload.job;
 }
 
-export async function getHealthStatus() {
-  const response = await fetch(`${API_BASE_URL}/health`);
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw new Error(`Unexpected response from job-service (/health): HTTP ${response.status}`);
-  }
+export async function getHealthStatus(options = {}) {
+  const response = await fetch(`${API_BASE_URL}/health`, { signal: options.signal });
+  assertJsonResponse(response, "/health", "Unable to load health status");
   const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(buildHttpErrorMessage("Unable to load health status", response.status));
+  }
 
   if (typeof payload?.status !== "number" || typeof payload?.message !== "string") {
     throw new Error("Invalid health payload received from job-service.");

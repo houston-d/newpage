@@ -1,40 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import { getJobById } from "../services/api";
+import useAsyncResource from "../hooks/useAsyncResource";
 
 export default function JobDetailPage({ jobId }) {
-  const [job, setJob] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadJob = async () => {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      try {
-        const loadedJob = await getJobById(jobId);
-        if (isActive) {
-          setJob(loadedJob);
-        }
-      } catch (error) {
-        if (isActive) {
-          setErrorMessage(error instanceof Error ? error.message : "Unable to load job.");
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadJob();
-    return () => {
-      isActive = false;
-    };
-  }, [jobId]);
+  const loadJob = useCallback(({ signal }) => getJobById(jobId, { signal }), [jobId]);
+  const { data: job, isLoading, errorMessage } = useAsyncResource(loadJob, "Unable to load job.");
 
   return (
     <main className="page">

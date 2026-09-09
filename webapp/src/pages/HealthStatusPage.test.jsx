@@ -55,7 +55,7 @@ describe("HealthStatusPage", () => {
 
     render(<HealthStatusPage />);
 
-    expect(await screen.findByText("Service is unavailable")).toBeTruthy();
+    expect(await screen.findByText("Unable to load health status.")).toBeTruthy();
   });
 
   it("shows a fallback error message for non-Error rejections", async () => {

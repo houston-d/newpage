@@ -1,40 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import { getJobs } from "../services/api";
+import useAsyncResource from "../hooks/useAsyncResource";
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadJobs = async () => {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      try {
-        const availableJobs = await getJobs();
-        if (isActive) {
-          setJobs(availableJobs);
-        }
-      } catch (error) {
-        if (isActive) {
-          setErrorMessage(error instanceof Error ? error.message : "Unable to load jobs.");
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadJobs();
-    return () => {
-      isActive = false;
-    };
-  }, []);
+  const loadJobs = useCallback(({ signal }) => getJobs({ signal }), []);
+  const { data: jobs, isLoading, errorMessage } = useAsyncResource(loadJobs, "Unable to load jobs.");
 
   return (
     <main className="page">
@@ -48,7 +19,7 @@ export default function JobsPage() {
       {errorMessage ? <p className="state error">{errorMessage}</p> : null}
 
       {!isLoading && !errorMessage ? (
-        jobs.length > 0 ? (
+        jobs && jobs.length > 0 ? (
           <section className="jobs-grid" aria-label="Available jobs">
             {jobs.map((job) => (
               <article className="job-card" key={job.id}>

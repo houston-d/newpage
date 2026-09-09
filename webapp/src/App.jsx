@@ -14,7 +14,11 @@ export default function App() {
 
   const jobPathMatch = window.location.pathname.match(/^\/jobs\/([^/]+)$/);
   if (jobPathMatch) {
-    return <JobDetailPage jobId={decodeURIComponent(jobPathMatch[1])} />;
+    try {
+      return <JobDetailPage jobId={decodeURIComponent(jobPathMatch[1])} />;
+    } catch {
+      return <NotFoundPage />;
+    }
   }
 
   return <NotFoundPage />;
