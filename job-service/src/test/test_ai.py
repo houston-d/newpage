@@ -254,6 +254,7 @@ class TestNormalizeJob:
         result = _normalize_job(raw_job, "job-1.json")
 
         assert result == {
+            "id": "job-1",
             "title": "Software Engineer",
             "location": "London",
             "company": "Acme Corp",
@@ -302,7 +303,7 @@ class TestNormalizeJob:
         result = _normalize_job(raw_job, "job-5.json")
 
         assert "unexpected_field" not in result
-        assert set(result.keys()) == {"title", "location", "company", "salary", "jd", "source_file"}
+        assert set(result.keys()) == {"id", "title", "location", "company", "salary", "jd", "source_file"}
 
 
 class TestLoadJobDescriptions:
@@ -528,10 +529,8 @@ class TestBuildJobIndex:
 class TestRankRelevantJobs:
     """Tests for _rank_relevant_jobs.
 
-    ``_rank_relevant_jobs`` scores jobs against a query using a TF-IDF-style
-    heuristic backed by ``_build_job_index`` (which is itself cached via
-    ``@lru_cache``). We patch ``_build_job_index`` directly to control the
-    term/doc frequencies independently of the real cache and job files.
+    ``_rank_relevant_jobs`` now delegates ranking to the Qdrant-backed
+    vector database and falls back to input ordering when needed.
     """
 
     def _job(self, title="", location="", company="", salary="", jd="", source_file="job.json") -> dict[str, str]:
@@ -545,46 +544,27 @@ class TestRankRelevantJobs:
         }
 
     def test_ranks_jobs_by_relevance_to_query(self):
-        """Core behaviour: the job whose terms best match the query is ranked first, and non-matching jobs are dropped."""
+        """Core behaviour: returns jobs in the order provided by vector search."""
         jobs = [
             self._job(title="Python Developer", jd="Python and Django experience.", source_file="a.json"),
             self._job(title="Java Developer", jd="Java and Spring experience.", source_file="b.json"),
         ]
-        doc_term_frequencies = (
-            Counter(_tokenize(_job_to_search_text(jobs[0]))),
-            Counter(_tokenize(_job_to_search_text(jobs[1]))),
-        )
-        doc_frequencies = Counter()
-        for tf in doc_term_frequencies:
-            for term in tf:
-                doc_frequencies[term] += 1
-
-        with patch("app.api.ai._build_job_index", return_value=(doc_term_frequencies, doc_frequencies)):
+        ranked = [jobs[1], jobs[0]]
+        with patch("app.api.ai.job_vector_database.search", return_value=ranked):
             result = _rank_relevant_jobs("python django", jobs, top_k=2)
 
-        # Only the Python job shares terms with the query, so it is the sole match, ranked first.
-        assert len(result) == 1
-        assert result[0]["source_file"] == "a.json"
+        assert [job["source_file"] for job in result] == ["b.json", "a.json"]
 
     def test_higher_scoring_job_ranks_before_lower_scoring_job(self):
-        """Core behaviour: among multiple matching jobs, the one with the stronger term overlap ranks first."""
+        """For tokenizable queries, vector search is invoked with the requested top_k."""
         jobs = [
             self._job(title="Java Developer", jd="Some Python exposure.", source_file="weak-match.json"),
             self._job(title="Python Developer", jd="Python Python Django Django experience.", source_file="strong-match.json"),
         ]
-        doc_term_frequencies = (
-            Counter(_tokenize(_job_to_search_text(jobs[0]))),
-            Counter(_tokenize(_job_to_search_text(jobs[1]))),
-        )
-        doc_frequencies = Counter()
-        for tf in doc_term_frequencies:
-            for term in tf:
-                doc_frequencies[term] += 1
+        with patch("app.api.ai.job_vector_database.search", return_value=jobs) as mock_search:
+            _rank_relevant_jobs("python django", jobs, top_k=2)
 
-        with patch("app.api.ai._build_job_index", return_value=(doc_term_frequencies, doc_frequencies)):
-            result = _rank_relevant_jobs("python django", jobs, top_k=2)
-
-        assert [job["source_file"] for job in result] == ["strong-match.json", "weak-match.json"]
+        mock_search.assert_called_once_with("python django", 2)
 
     def test_empty_query_returns_first_top_k_jobs_unranked(self):
         """Boundary case: a query with no tokenizable terms falls back to the input order, sliced."""
@@ -598,22 +578,13 @@ class TestRankRelevantJobs:
 
         assert result == jobs[:2]
 
-    def test_no_matching_terms_falls_back_to_first_top_k_jobs(self):
-        """When query terms don't match any document terms, no jobs score above 0, so the input order is preserved."""
+    def test_vector_search_failure_falls_back_to_first_top_k_jobs(self):
+        """If vector search fails, fall back to input order."""
         jobs = [
             self._job(title="Chef", jd="Cook great food.", source_file="a.json"),
             self._job(title="Pilot", jd="Fly airplanes safely.", source_file="b.json"),
         ]
-        doc_term_frequencies = (
-            Counter(_tokenize(_job_to_search_text(jobs[0]))),
-            Counter(_tokenize(_job_to_search_text(jobs[1]))),
-        )
-        doc_frequencies = Counter()
-        for tf in doc_term_frequencies:
-            for term in tf:
-                doc_frequencies[term] += 1
-
-        with patch("app.api.ai._build_job_index", return_value=(doc_term_frequencies, doc_frequencies)):
+        with patch("app.api.ai.job_vector_database.search", side_effect=RuntimeError("search failed")):
             result = _rank_relevant_jobs("astronaut", jobs, top_k=2)
 
         assert result == jobs[:2]
@@ -625,13 +596,7 @@ class TestRankRelevantJobs:
             self._job(title="Python Developer B", jd="Python experience.", source_file="b.json"),
             self._job(title="Python Developer C", jd="Python experience.", source_file="c.json"),
         ]
-        doc_term_frequencies = tuple(Counter(_tokenize(_job_to_search_text(job))) for job in jobs)
-        doc_frequencies = Counter()
-        for tf in doc_term_frequencies:
-            for term in tf:
-                doc_frequencies[term] += 1
-
-        with patch("app.api.ai._build_job_index", return_value=(doc_term_frequencies, doc_frequencies)):
+        with patch("app.api.ai.job_vector_database.search", return_value=jobs):
             result = _rank_relevant_jobs("python", jobs, top_k=1)
 
         assert len(result) == 1
@@ -639,31 +604,24 @@ class TestRankRelevantJobs:
     def test_top_k_zero_returns_empty_list(self):
         """Boundary case: top_k=0 should return no jobs at all, regardless of scores."""
         jobs = [self._job(title="Python Developer", jd="Python experience.", source_file="a.json")]
-        doc_term_frequencies = (Counter(_tokenize(_job_to_search_text(jobs[0]))),)
-        doc_frequencies = Counter({term: 1 for term in doc_term_frequencies[0]})
-
-        with patch("app.api.ai._build_job_index", return_value=(doc_term_frequencies, doc_frequencies)):
-            result = _rank_relevant_jobs("python", jobs, top_k=0)
+        result = _rank_relevant_jobs("python", jobs, top_k=0)
 
         assert result == []
 
     def test_empty_jobs_list_returns_empty_list(self):
-        """Boundary case: an empty jobs list should not error and should return an empty list."""
-        with patch("app.api.ai._build_job_index", return_value=((), Counter())):
+        """Boundary case: an empty jobs list should return an empty list on vector-search failure."""
+        with patch("app.api.ai.job_vector_database.search", side_effect=RuntimeError("not loaded")):
             result = _rank_relevant_jobs("python", [], top_k=5)
 
         assert result == []
 
-    def test_query_terms_not_in_any_document_are_ignored_in_scoring(self):
-        """Query terms absent from a document's term frequency contribute zero score for that document."""
+    def test_empty_vector_results_fall_back_to_first_top_k_jobs(self):
+        """If vector search returns no hits, fallback ordering is used."""
         jobs = [
             self._job(title="Python Developer", jd="Python experience.", source_file="a.json"),
+            self._job(title="Go Developer", jd="Go experience.", source_file="b.json"),
         ]
-        doc_term_frequencies = (Counter(_tokenize(_job_to_search_text(jobs[0]))),)
-        doc_frequencies = Counter({term: 1 for term in doc_term_frequencies[0]})
-
-        with patch("app.api.ai._build_job_index", return_value=(doc_term_frequencies, doc_frequencies)):
-            # "kubernetes" never appears in any document term frequency.
+        with patch("app.api.ai.job_vector_database.search", return_value=[]):
             result = _rank_relevant_jobs("python kubernetes", jobs, top_k=1)
 
         assert result == jobs[:1]

@@ -16,6 +16,7 @@ export default function AiSummaryAccordion({ cacheKey, generateSummary }) {
   const handleGenerateSummary = async () => {
     setIsGeneratingSummary(true);
     setSummaryErrorMessage("");
+    setSummary("");
 
     try {
       const generatedSummary = await generateSummary();

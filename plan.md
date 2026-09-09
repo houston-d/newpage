@@ -46,6 +46,14 @@ AI: ho myh pro rec for inst data direct a A their ho ho and D pros with and for 
 
 During generation GPU usage peaked around 75% and memory at 56% (6.8 GB). I will continue using Tiny Llama and accept the gibberish until development is finish and I need to do prompt engineering and demonstrate the functionality.
 
+## Vector Database
+
+I considered implementing a standalone DB for this task but felt that this was unnecessary as I would not be deploying this to AWS. I instead opted for Qdrant as it is a simple vector database that can be run locally and is easy to use. 
+
+I then create embeddings using sentence-transformers as this is what I am familiar with. I used all-lm-mini-l6-v2 as it is a small model that can be run on my GPU and one of the top performing models for semantic search. Models like Voyage or Qwen embedding would be good large alternatives for production.
+
+
+
 
 ## TODO
 
