@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response, status
 
-from .ai import ApiResponse, is_model_loaded, router as ai_router
+from .ai import is_model_loaded, router as ai_router
+from .schemas import ApiResponse
 
 app = FastAPI(title="NewPage API", version="0.1.0")
 
