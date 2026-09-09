@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import AiSummaryAccordion from "../components/AiSummaryAccordion";
 import { analyseJobSummary, getJobById } from "../services/api";
 import useAsyncResource from "../hooks/useAsyncResource";
+import { renderDescriptionWithBoldMarkdown } from "../services/renderText.jsx";
 
 export default function JobDetailPage({ jobId }) {
   const loadJob = useCallback(({ signal }) => getJobById(jobId, { signal }), [jobId]);
@@ -44,7 +45,7 @@ export default function JobDetailPage({ jobId }) {
             </div>
             <h2>{job.title}</h2>
             <p className="salary">{job.salary}</p>
-            <p className="detail-description">{job.jd}</p>
+            <p className="detail-description">{renderDescriptionWithBoldMarkdown(job.jd)}</p>
             <button className="apply-button" type="button">
               Apply
             </button>
