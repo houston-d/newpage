@@ -1,6 +1,5 @@
 import json
 import logging
-import math
 import os
 import re
 import secrets
@@ -13,6 +12,9 @@ from typing import Any
 
 import torch
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qdrant_models
+from sentence_transformers import SentenceTransformer
 from transformers import GenerationConfig, pipeline
 
 from .schemas import (
@@ -54,6 +56,146 @@ generation_config = GenerationConfig(
 )
 
 ALLOWED_MODELS = {"TinyLlama/TinyLlama-1.1B-Chat-v1.0"}
+JOB_VECTOR_COLLECTION = "jobs"
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def _qdrant_storage_path() -> Path:
+    return _job_descriptions_dir().parent / "vector-db"
+
+
+@lru_cache(maxsize=1)
+def _load_embedding_model() -> SentenceTransformer:
+    model_name = os.getenv("JOB_SERVICE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+    return SentenceTransformer(model_name)
+
+
+class QdrantJobVectorDatabase:
+    """Local Qdrant vector store for job descriptions."""
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._client: QdrantClient | None = None
+        self._embedder: SentenceTransformer | None = None
+        self._jobs_by_point_id: dict[int, dict[str, str]] = {}
+
+    def _get_client(self) -> QdrantClient:
+        if self._client is not None:
+            return self._client
+
+        storage_path = str(_qdrant_storage_path())
+        try:
+            self._client = QdrantClient(path=storage_path)
+        except RuntimeError as exc:
+            if "already accessed by another instance" not in str(exc):
+                raise
+            logger.warning(
+                "Qdrant local storage is locked at %s; falling back to in-memory store for this process",
+                storage_path,
+            )
+            self._client = QdrantClient(path=":memory:")
+        return self._client
+
+    def is_loaded(self) -> bool:
+        with self._lock:
+            return bool(self._jobs_by_point_id)
+
+    def _collection_exists(self) -> bool:
+        client = self._get_client()
+        existing_collections = client.get_collections()
+        return any(collection.name == JOB_VECTOR_COLLECTION for collection in existing_collections.collections)
+
+    def load_jobs(self, jobs: tuple[dict[str, str], ...]) -> None:
+        if not jobs:
+            with self._lock:
+                self._jobs_by_point_id = {}
+            return
+
+        with self._lock:
+            if self._embedder is None:
+                self._embedder = _load_embedding_model()
+
+            job_texts = [_job_to_search_text(job) for job in jobs]
+            embeddings = self._embedder.encode(job_texts, normalize_embeddings=True)
+            vector_size = len(embeddings[0])
+            client = self._get_client()
+
+            if self._collection_exists():
+                client.delete_collection(collection_name=JOB_VECTOR_COLLECTION)
+            client.create_collection(
+                collection_name=JOB_VECTOR_COLLECTION,
+                vectors_config=qdrant_models.VectorParams(
+                    size=vector_size,
+                    distance=qdrant_models.Distance.COSINE,
+                ),
+            )
+
+            points: list[qdrant_models.PointStruct] = []
+            jobs_by_point_id: dict[int, dict[str, str]] = {}
+            for idx, job in enumerate(jobs):
+                points.append(
+                    qdrant_models.PointStruct(
+                        id=idx,
+                        vector=embeddings[idx].tolist(),
+                        payload=job,
+                    )
+                )
+                jobs_by_point_id[idx] = job
+
+            client.upsert(collection_name=JOB_VECTOR_COLLECTION, points=points, wait=True)
+            self._jobs_by_point_id = jobs_by_point_id
+
+    def jobs(self) -> tuple[dict[str, str], ...]:
+        with self._lock:
+            if not self._jobs_by_point_id:
+                raise RuntimeError("Job vector database is not loaded")
+            return tuple(self._jobs_by_point_id[idx] for idx in sorted(self._jobs_by_point_id))
+
+    def search(self, query: str, top_k: int) -> list[dict[str, str]]:
+        with self._lock:
+            if not self._jobs_by_point_id:
+                raise RuntimeError("Job vector database is not loaded")
+            if self._embedder is None:
+                self._embedder = _load_embedding_model()
+            client = self._get_client()
+
+            query_vector = self._embedder.encode(query, normalize_embeddings=True).tolist()
+            if hasattr(client, "query_points"):
+                query_response = client.query_points(
+                    collection_name=JOB_VECTOR_COLLECTION,
+                    query=query_vector,
+                    limit=top_k,
+                    with_payload=True,
+                )
+                search_results = query_response.points
+            else:
+                search_results = client.search(
+                    collection_name=JOB_VECTOR_COLLECTION,
+                    query_vector=query_vector,
+                    limit=top_k,
+                    with_payload=True,
+                )
+
+            matched_jobs: list[dict[str, str]] = []
+            for result in search_results:
+                point_id = result.id
+                if isinstance(point_id, int) and point_id in self._jobs_by_point_id:
+                    matched_jobs.append(self._jobs_by_point_id[point_id])
+                    continue
+
+                payload = result.payload or {}
+                matched_jobs.append(
+                    {
+                        "id": str(payload.get("id", "")).strip(),
+                        "title": str(payload.get("title", "")).strip(),
+                        "location": str(payload.get("location", "")).strip(),
+                        "company": str(payload.get("company", "")).strip(),
+                        "salary": str(payload.get("salary", "")).strip(),
+                        "jd": str(payload.get("jd", "")).strip(),
+                        "source_file": str(payload.get("source_file", "")).strip(),
+                    }
+                )
+            return matched_jobs
 
 
 class ModelService:
@@ -135,16 +277,22 @@ def _load_job_descriptions() -> list[dict[str, str]]:
 
 @lru_cache(maxsize=1)
 def _load_job_descriptions_cached() -> tuple[dict[str, str], ...]:
-    return tuple(_load_job_descriptions())
+    if job_vector_database.is_loaded():
+        return job_vector_database.jobs()
+
+    jobs = tuple(_load_job_descriptions())
+    try:
+        job_vector_database.load_jobs(jobs)
+    except (RuntimeError, ValueError, OSError):
+        logger.exception("Failed to populate local Qdrant job vectors")
+    return jobs
 
 
 def _job_to_search_text(job: dict[str, str]) -> str:
     return " ".join([job["title"], job["location"], job["company"], job["salary"], job["jd"]])
 
 
-@lru_cache(maxsize=1)
-def _build_job_index() -> tuple[tuple[Counter[str], ...], Counter[str]]:
-    jobs = _load_job_descriptions_cached()
+def _build_job_index_from_jobs(jobs: tuple[dict[str, str], ...]) -> tuple[tuple[Counter[str], ...], Counter[str]]:
     doc_term_frequencies: list[Counter[str]] = []
     doc_frequencies: Counter[str] = Counter()
     for job in jobs:
@@ -152,35 +300,49 @@ def _build_job_index() -> tuple[tuple[Counter[str], ...], Counter[str]]:
         doc_term_frequencies.append(term_frequency)
         for term in term_frequency:
             doc_frequencies[term] += 1
-
     return tuple(doc_term_frequencies), doc_frequencies
 
 
+job_vector_database = QdrantJobVectorDatabase()
+
+
+def initialize_job_vector_database() -> None:
+    """Load all job descriptions into the local Qdrant vector database."""
+    try:
+        jobs = tuple(_load_job_descriptions())
+    except (FileNotFoundError, ValueError, json.JSONDecodeError, OSError, RuntimeError):
+        logger.exception("Failed to initialize local job vector database")
+        return
+
+    job_vector_database.load_jobs(jobs)
+    _load_job_descriptions_cached.cache_clear()
+    _build_job_index.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def _build_job_index() -> tuple[tuple[Counter[str], ...], Counter[str]]:
+    jobs = _load_job_descriptions_cached()
+    return _build_job_index_from_jobs(jobs)
+
+
 def _rank_relevant_jobs(query: str, jobs: list[dict[str, str]], top_k: int) -> list[dict[str, str]]:
+    if top_k <= 0:
+        return []
+
     query_terms = Counter(_tokenize(query))
     if not query_terms:
         return jobs[:top_k]
 
-    doc_term_frequencies, doc_frequencies = _build_job_index()
-
-    total_docs = len(jobs)
-    scored_jobs: list[tuple[float, int]] = []
-    for idx, term_frequency in enumerate(doc_term_frequencies):
-        score = 0.0
-        for term, query_term_frequency in query_terms.items():
-            doc_term_frequency = term_frequency.get(term, 0)
-            if doc_term_frequency == 0:
-                continue
-            idf = math.log((total_docs + 1) / (doc_frequencies[term] + 1)) + 1.0
-            score += query_term_frequency * doc_term_frequency * idf * idf
-        if score > 0:
-            scored_jobs.append((score, idx))
-
-    if not scored_jobs:
+    try:
+        vector_results = job_vector_database.search(query, top_k)
+    except (RuntimeError, ValueError, OSError):
+        logger.exception("Vector search failed, falling back to default ordering")
         return jobs[:top_k]
 
-    scored_jobs.sort(key=lambda item: item[0], reverse=True)
-    return [jobs[idx] for _, idx in scored_jobs[:top_k]]
+    if not vector_results:
+        return jobs[:top_k]
+
+    return vector_results[:top_k]
 
 
 def _truncate(text: str, max_length: int) -> str:

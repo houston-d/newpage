@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from .ai import is_model_loaded, router as ai_router
+from .ai import initialize_job_vector_database, is_model_loaded, router as ai_router
 from .jobs import router as jobs_router
 from .schemas import ApiResponse
 
@@ -13,6 +13,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def load_job_vectors_on_startup() -> None:
+    initialize_job_vector_database()
 
 
 @app.get("/")

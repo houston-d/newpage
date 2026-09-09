@@ -91,6 +91,7 @@ class TestQueryJobBoardFunction:
         with (
             patch("app.api.ai.model_service.is_loaded", return_value=True),
             patch("app.api.ai._load_job_descriptions_cached", return_value=SAMPLE_JOBS),
+            patch("app.api.ai.job_vector_database.search", return_value=[SAMPLE_JOBS[0]]),
             patch("app.api.ai.model_service.generate_text", return_value="Here is a great match") as mock_generate,
         ):
             result = query_job_board(payload, response)
@@ -264,6 +265,7 @@ class TestQueryJobBoardEndpoint:
         with (
             patch("app.api.ai.model_service.is_loaded", return_value=True),
             patch("app.api.ai._load_job_descriptions_cached", return_value=SAMPLE_JOBS),
+            patch("app.api.ai.job_vector_database.search", return_value=[SAMPLE_JOBS[0]]),
             patch("app.api.ai.model_service.generate_text", return_value="Great match found"),
         ):
             response = client.post("/ai/query_job_board", json={"query": SAMPLE_QUERY, "top_k": 2})
