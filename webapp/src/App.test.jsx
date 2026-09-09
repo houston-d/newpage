@@ -16,6 +16,10 @@ vi.mock("./pages/NotFoundPage", () => ({
   default: () => <p>Not found page</p>,
 }));
 
+vi.mock("./pages/ChatPage", () => ({
+  default: () => <p>Chat page</p>,
+}));
+
 vi.mock("./pages/JobDetailPage", () => ({
   default: ({ jobId }) => <p>Job detail: {jobId}</p>,
 }));
@@ -36,6 +40,11 @@ describe("App", () => {
   it("renders health page for /health", () => {
     renderAtRoute("/health");
     expect(screen.getByText("Health page")).toBeTruthy();
+  });
+
+  it("renders chat page for /chat", () => {
+    renderAtRoute("/chat");
+    expect(screen.getByText("Chat page")).toBeTruthy();
   });
 
   it("renders job details for encoded job id", () => {
