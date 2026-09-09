@@ -13,11 +13,18 @@ export default function JobDetailPage({ jobId }) {
   return (
     <main className="page">
       <header className="hero">
-        <p className="eyebrow">NewPage Careers</p>
-        <h1>Job details</h1>
-        <Link className="back-link" to="/jobs">
-          Back to all roles
-        </Link>
+        <div className="hero-header-row">
+          <div>
+            <p className="eyebrow">NewPage Careers</p>
+            <h1>Job details</h1>
+            <Link className="back-link" to="/jobs">
+              Back to all roles
+            </Link>
+          </div>
+          <Link className="chat-nav-button" to="/chat">
+            Open AI chat
+          </Link>
+        </div>
       </header>
 
       {isLoading ? <p className="state">Loading job...</p> : null}

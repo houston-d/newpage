@@ -29,8 +29,22 @@ I will initially require the user to upload their CV and then paste in a JD. Thi
 - [ ] Implement a simple front end using React to allow users to upload their CV, paste in a JD, and view job postings.
 - [ ] Allow querying individual jobs
 - [ ] Summarise job board
+- [ ] Vector database for RAG
 - [ ] Allow model selection
 - [ ] Containerisation / Terraform etc for reproducability
+
+
+## Model Selection
+
+I initially want to work with a small model I can load on my 5070 GPU. I can ignore performance of the model initially anyway until I validate the system. [Tiny Llama 1.1B](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0) was useful for the simple prompts as it would give coherent (although poor) responses. However, once I created the chat functionality it produced gibberish:
+
+```text
+You: what jobs are relevant to my CV?
+
+AI: ho myh pro rec for inst data direct a A their ho ho and D pros with and for ho A Ah and the HT pros My pro A D86 and D C Hoh D C the du sd h6 55 with D 2  b& c and Dhh hhhh h0 high for hhtsal for h and and for a under forh forhohou for to and forled proled recicedled pro for Chledledhedh ar proledhing 2 8 Dh proledh reciding instted pro pro proh andh insth pro foralhingleddledd the rec a ho data data insts with rech with and identifieddhht instchingledted rec with C rec highding contract recledhh h As thedhed “ d h at a with Dled hydroded with led
+```
+
+During generation GPU usage peaked around 75% and memory at 56% (6.8 GB). I will continue using Tiny Llama and accept the gibberish until development is finish and I need to do prompt engineering and demonstrate the functionality.
 
 
 ## TODO

@@ -38,6 +38,7 @@ describe("JobDetailPage", () => {
 
     expect(screen.getByRole("heading", { name: "Job details", level: 1 })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Back to all roles" }).getAttribute("href")).toBe("/jobs");
+    expect(screen.getByRole("link", { name: "Open AI chat" }).getAttribute("href")).toBe("/chat");
   });
 
   it("loads the requested job and renders details", async () => {

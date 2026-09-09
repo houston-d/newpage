@@ -27,9 +27,16 @@ export default function JobsPage() {
   return (
     <main className="page">
       <header className="hero">
-        <p className="eyebrow">NewPage Careers</p>
-        <h1>Open roles</h1>
-        <p className="hero-copy">Browse current opportunities powered by the job-service.</p>
+        <div className="hero-header-row">
+          <div>
+            <p className="eyebrow">NewPage Careers</p>
+            <h1>Open roles</h1>
+            <p className="hero-copy">Browse current opportunities powered by the job-service.</p>
+          </div>
+          <Link className="chat-nav-button" to="/chat">
+            Open AI chat
+          </Link>
+        </div>
       </header>
 
       {isLoading ? <p className="state">Loading jobs...</p> : null}
