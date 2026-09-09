@@ -36,6 +36,7 @@ SAMPLE_QUERY = "Senior Python backend engineer in London"
 
 SAMPLE_JOBS: tuple[dict[str, str], ...] = (
     {
+        "id": "acme_backend",
         "title": "Senior Backend Engineer",
         "location": "London",
         "company": "Acme Corp",
@@ -44,6 +45,7 @@ SAMPLE_JOBS: tuple[dict[str, str], ...] = (
         "jd": "We are looking for a Senior Backend Engineer with strong Python experience.",
     },
     {
+        "id": "widgets_frontend",
         "title": "Frontend Developer",
         "location": "Manchester",
         "company": "Widgets Ltd",
