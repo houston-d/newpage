@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getCachedSummary, setCachedSummary } from "../services/summaryCache";
+import {renderDescriptionWithBoldMarkdown} from "../services/renderText.jsx";
 
 export default function AiSummaryAccordion({ cacheKey, generateSummary }) {
   const [summary, setSummary] = useState(() => getCachedSummary(cacheKey));
@@ -44,7 +45,7 @@ export default function AiSummaryAccordion({ cacheKey, generateSummary }) {
         </button>
         {isGeneratingSummary ? <p className="state">Generating summary...</p> : null}
         {summaryErrorMessage ? <p className="state error">{summaryErrorMessage}</p> : null}
-        {summary ? <p className="summary-text">{summary}</p> : null}
+        {summary ? <p className="summary-text">{renderDescriptionWithBoldMarkdown(summary)}</p> : null}
       </div>
     </details>
   );
