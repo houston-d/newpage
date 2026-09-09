@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { chatWithCv } from "../services/api";
 
 if (!GlobalWorkerOptions.workerSrc) {
   GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -36,6 +37,11 @@ export default function ChatPage() {
   const [cvText, setCvText] = useState("");
   const [isExtractingCv, setIsExtractingCv] = useState(false);
   const [cvErrorMessage, setCvErrorMessage] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatErrorMessage, setChatErrorMessage] = useState("");
+  const hasCvText = cvText.trim().length > 0;
+  const requiresCvUpload = !hasCvText && !isExtractingCv;
+  const isChatEnabled = hasCvText && !isExtractingCv && !isSendingMessage;
 
   useEffect(() => {
     if (cvText) {
@@ -43,20 +49,48 @@ export default function ChatPage() {
     }
   }, [cvText]);
 
-  const sendMessage = (event) => {
+  const sendMessage = async (event) => {
     event.preventDefault();
+    if (!isChatEnabled) {
+      return;
+    }
 
     const trimmedMessage = draft.trim();
     if (!trimmedMessage) {
       return;
     }
 
-    setMessages((previousMessages) => [
-      ...previousMessages,
-      { role: "user", text: trimmedMessage },
-      { role: "assistant", text: "TODO" },
-    ]);
+    const updatedMessages = [...messages, { role: "user", text: trimmedMessage }];
+    setMessages([...updatedMessages, { role: "assistant", text: "Thinking...", isThinking: true }]);
     setDraft("");
+
+    setIsSendingMessage(true);
+    setChatErrorMessage("");
+    try {
+      const assistantReply = await chatWithCv({
+        cv: cvText,
+        messageHistory: updatedMessages.map((message) => ({
+          role: message.role,
+          content: message.text,
+        })),
+      });
+      setMessages((previousMessages) =>
+        previousMessages.map((message, index) =>
+          message.isThinking
+            ? {
+                ...message,
+                isThinking: false,
+                text: assistantReply,
+              }
+            : message,
+        ),
+      );
+    } catch (error) {
+      setMessages((previousMessages) => previousMessages.filter((message) => !message.isThinking));
+      setChatErrorMessage(error instanceof Error ? error.message : "Failed to send chat message.");
+    } finally {
+      setIsSendingMessage(false);
+    }
   };
 
   const uploadCv = async (event) => {
@@ -77,6 +111,12 @@ export default function ChatPage() {
 
     try {
       const extractedText = await extractPdfText(selectedFile);
+      if (!extractedText.trim()) {
+        setCvText("");
+        setCvErrorMessage("No selectable text found in PDF.");
+        return;
+      }
+
       setCvText(extractedText);
     } catch (error) {
       setCvText("");
@@ -113,6 +153,9 @@ export default function ChatPage() {
       </section>
 
       <section className="chat-box" aria-label="AI chat conversation">
+        {requiresCvUpload ? <p className="state">Upload a valid CV PDF to enable chat.</p> : null}
+        {isSendingMessage ? <p className="state">AI is replying...</p> : null}
+        {chatErrorMessage ? <p className="state error">{chatErrorMessage}</p> : null}
         <div className="chat-messages">
           {messages.length === 0 ? <p className="state">Start the conversation.</p> : null}
           {messages.map((message, index) => (
@@ -126,12 +169,13 @@ export default function ChatPage() {
           <input
             className="chat-input"
             aria-label="Message"
+            disabled={!isChatEnabled}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Type your message"
             type="text"
             value={draft}
           />
-          <button className="chat-send-button" type="submit">
+          <button className="chat-send-button" disabled={!isChatEnabled} type="submit">
             Send
           </button>
         </form>

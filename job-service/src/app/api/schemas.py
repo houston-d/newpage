@@ -1,5 +1,7 @@
 """Request and response models shared across the API routers."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +34,16 @@ class ApiResponse(BaseModel):
 
 class QueryJobBoardResponse(ApiResponse):
     sources: list[QuerySource] = Field(default_factory=list)
+
+
+class ChatMessage(BaseModel):
+    role: Literal["assistant", "user"]
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+class ChatRequest(BaseModel):
+    cv: str = Field(..., min_length=1, max_length=200000)
+    message_history: list[ChatMessage] = Field(..., min_length=1, max_length=100)
 
 
 class Job(BaseModel):
