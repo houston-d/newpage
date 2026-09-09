@@ -16,6 +16,9 @@ dependencies = [
     "accelerate (>=1.0.0,<2.0.0)"
 ]
 
+[tool.poetry]
+package-mode = false
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 ruff = "^0.6.0"

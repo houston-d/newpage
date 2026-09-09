@@ -117,7 +117,7 @@ class ModelService:
 
 
 def _job_descriptions_dir() -> Path:
-    return Path(__file__).resolve().parents[4] / "job-descriptions"
+    return Path(__file__).resolve().parents[1] / "resources" / "job-descriptions"
 
 
 def _tokenize(text: str) -> list[str]:
