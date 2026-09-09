@@ -46,6 +46,13 @@ AI: ho myh pro rec for inst data direct a A their ho ho and D pros with and for 
 
 During generation GPU usage peaked around 75% and memory at 56% (6.8 GB). I will continue using Tiny Llama and accept the gibberish until development is finish and I need to do prompt engineering and demonstrate the functionality.
 
+To query a larger model, I opted for Bedrock as I have prior experience calling the converse api. Additionally, it comes with some prompt injection defenses out of the box but I need to ensure that the free chat option is defended against unrelated requests.
+
+While I would prefer to use an anthropic model, as I believe them to be superior in natural language, Anthropic requires my account to be part of an organisation to use them with AWS Bedrock. I have settled on `openai.gpt-oss-120b-1` as this is a large model while remaining relatively cheap for the initial mockups. 
+
+Initial tests look really positive, but it attempts to return responses in markdown which I don't want to handle so when I engineer the prompts I need to ensure that it does not attempt markdown formatting.
+
+
 ## Vector Database
 
 I considered implementing a standalone DB for this task but felt that this was unnecessary as I would not be deploying this to AWS. I instead opted for Qdrant as it is a simple vector database that can be run locally and is easy to use. 

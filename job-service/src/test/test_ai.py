@@ -1,7 +1,7 @@
 """Unit tests for the ``ModelService`` class in ``app.api.ai``.
 
-``ModelService`` wraps a HuggingFace text-generation pipeline behind a lock
-and exposes three operations:
+``ModelService`` wraps a chat completions HTTP client configuration behind a
+lock and exposes three operations:
 
     class ModelService:
         def is_loaded(self) -> bool: ...
@@ -15,7 +15,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import torch
 from app.api.ai import (
     ModelService,
     _build_job_index,
@@ -38,74 +37,85 @@ class TestIsLoaded:
     """Tests for ModelService.is_loaded."""
 
     def test_returns_false_when_no_model_loaded(self, service: ModelService):
-        """Core behaviour: a freshly constructed service has no pipeline."""
+        """Core behaviour: a freshly constructed service has no API config/model."""
         assert service.is_loaded() is False
 
-    def test_returns_true_after_pipe_is_set(self, service: ModelService):
-        """Once a pipeline has been assigned internally, it reports loaded."""
-        service._pipe = MagicMock()
+    def test_returns_true_after_api_config_and_model_are_set(self, service: ModelService):
+        """Once API config/model has been assigned, it reports loaded."""
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "token"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
         assert service.is_loaded() is True
 
 
 class TestLoadModel:
     """Tests for ModelService.load_model."""
 
-    def test_loads_pipeline_on_cpu_when_cuda_unavailable(self, service: ModelService):
-        """When CUDA is unavailable, the pipeline should be built for CPU."""
-        fake_pipe = MagicMock()
-        with (
-            patch("app.api.ai.torch.cuda.is_available", return_value=False),
-            patch("app.api.ai.pipeline", return_value=fake_pipe) as mock_pipeline,
+    def test_loads_api_key_and_default_api_url(self, service: ModelService):
+        """BEDROCK_API_KEY should be loaded and default API URL used when unset."""
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=lambda key, default=None: {"BEDROCK_API_KEY": "secret", "AWS_REGION": "eu-west-2"}.get(
+                key, default
+            ),
         ):
-            service.load_model("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+            service.load_model("openai.gpt-oss-120b-1:0")
 
-        mock_pipeline.assert_called_once_with(
-            "text-generation",
-            model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            dtype=torch.float32,
-            device_map=None,
-        )
+        assert service._api_key == "secret"
+        assert service._api_url == "https://bedrock-runtime.eu-west-2.amazonaws.com/openai/v1/chat/completions"
         assert service.is_loaded() is True
 
-    def test_loads_pipeline_on_gpu_when_cuda_available(self, service: ModelService):
-        """When CUDA is available, bfloat16 and auto device_map should be used."""
-        fake_pipe = MagicMock()
-        with (
-            patch("app.api.ai.torch.cuda.is_available", return_value=True),
-            patch("app.api.ai.pipeline", return_value=fake_pipe) as mock_pipeline,
+    def test_uses_eu_west_1_when_region_unset(self, service: ModelService):
+        """If region env vars are absent, default Bedrock region should be eu-west-1."""
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=lambda key, default=None: {"BEDROCK_API_KEY": "secret"}.get(key, default),
         ):
-            service.load_model("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+            service.load_model("openai.gpt-oss-120b-1:0")
 
-        mock_pipeline.assert_called_once_with(
-            "text-generation",
-            model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            dtype=torch.bfloat16,
-            device_map="auto",
-        )
+        assert service._api_url == "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+    def test_loads_custom_api_url_when_set(self, service: ModelService):
+        """BEDROCK_API_URL should override the default endpoint."""
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=lambda key, default=None: {
+                "BEDROCK_API_KEY": "secret",
+                "BEDROCK_API_URL": "https://example.internal/v1/chat/completions",
+            }.get(key, default),
+        ):
+            service.load_model("openai.gpt-oss-120b-1:0")
+
+        assert service._api_url == "https://example.internal/v1/chat/completions"
         assert service.is_loaded() is True
 
-    def test_propagates_exception_and_leaves_service_unloaded(self, service: ModelService):
-        """If pipeline construction fails, the error should propagate and no pipe is stored."""
-        with (
-            patch("app.api.ai.torch.cuda.is_available", return_value=False),
-            patch("app.api.ai.pipeline", side_effect=OSError("model not found")),
-        ):
-            with pytest.raises(OSError, match="model not found"):
-                service.load_model("bad/model")
+    def test_raises_runtime_error_when_api_key_is_missing(self, service: ModelService):
+        """BEDROCK_API_KEY is required to authorize chat completions calls."""
+        with patch("app.api.ai.os.getenv", return_value=None):
+            with pytest.raises(RuntimeError, match="BEDROCK_API_KEY is not configured"):
+                service.load_model("openai.gpt-oss-120b-1:0")
 
         assert service.is_loaded() is False
 
-    def test_replaces_previously_loaded_pipeline(self, service: ModelService):
-        """Loading a new model should overwrite any previously stored pipeline."""
-        first_pipe = MagicMock()
-        second_pipe = MagicMock()
-        with patch("app.api.ai.torch.cuda.is_available", return_value=False):
-            with patch("app.api.ai.pipeline", return_value=first_pipe):
-                service.load_model("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-            with patch("app.api.ai.pipeline", return_value=second_pipe):
-                service.load_model("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    def test_replaces_previously_loaded_api_configuration(self, service: ModelService):
+        """Loading again should overwrite the previously loaded API key and URL."""
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=lambda key, default=None: {"BEDROCK_API_KEY": "first", "BEDROCK_API_URL": "https://first"}.get(
+                key, default
+            ),
+        ):
+            service.load_model("openai.gpt-oss-120b-1:0")
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=lambda key, default=None: {"BEDROCK_API_KEY": "second", "BEDROCK_API_URL": "https://second"}.get(
+                key, default
+            ),
+        ):
+            service.load_model("openai.gpt-oss-120b-1:0")
 
-        assert service._pipe is second_pipe
+        assert service._api_key == "second"
+        assert service._api_url == "https://second"
 
 
 class TestGenerateText:
@@ -116,75 +126,175 @@ class TestGenerateText:
         with pytest.raises(RuntimeError, match="Model not loaded"):
             service.generate_text([{"role": "user", "content": "hi"}])
 
-    def test_returns_generated_text_from_pipeline_output(self, service: ModelService):
-        """Core behaviour: extracts generated_text from the first output element."""
-        fake_pipe = MagicMock()
-        fake_pipe.tokenizer.apply_chat_template.return_value = "rendered-prompt"
-        fake_pipe.return_value = [{"generated_text": "Hello, world!"}]
-        service._pipe = fake_pipe
+    def test_returns_generated_text_from_chat_completions_output(self, service: ModelService):
+        """Core behaviour: extracts content from OpenAI-style chat completions output."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps(
+            {"choices": [{"message": {"content": "Hello, world!"}}]}
+        ).encode("utf-8")
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
 
-        messages = [{"role": "user", "content": "Say hello"}]
-        result = service.generate_text(messages)
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
+            result = service.generate_text([{"role": "user", "content": "Say hello"}])
 
         assert result == "Hello, world!"
 
-    def test_applies_chat_template_with_expected_arguments(self, service: ModelService):
-        """The chat template should be rendered with tokenize disabled and a generation prompt added."""
-        fake_pipe = MagicMock()
-        fake_pipe.tokenizer.apply_chat_template.return_value = "rendered-prompt"
-        fake_pipe.return_value = [{"generated_text": "ok"}]
-        service._pipe = fake_pipe
+    def test_strips_reasoning_tags_from_response_content(self, service: ModelService):
+        """Reasoning blocks should be removed from the returned message."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "<reasoning>Internal chain</reasoning>\nFinal answer text.",
+                        }
+                    }
+                ]
+            }
+        ).encode("utf-8")
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
 
-        messages = [
-            {"role": "system", "content": "You are helpful."},
-            {"role": "user", "content": "Say hello"},
-        ]
-        service.generate_text(messages)
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
 
-        fake_pipe.tokenizer.apply_chat_template.assert_called_once_with(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
+            result = service.generate_text([{"role": "user", "content": "Say hello"}])
 
-    def test_invokes_pipeline_with_rendered_prompt_and_no_full_text(self, service: ModelService):
-        """The pipeline call should pass the rendered prompt and suppress echoing the input."""
-        fake_pipe = MagicMock()
-        fake_pipe.tokenizer.apply_chat_template.return_value = "rendered-prompt"
-        fake_pipe.return_value = [{"generated_text": "ok"}]
-        service._pipe = fake_pipe
+        assert result == "Final answer text."
 
-        service.generate_text([{"role": "user", "content": "hi"}])
+    def test_sends_authorization_bearer_header(self, service: ModelService):
+        """The HTTP call should include Authorization: Bearer <BEDROCK_API_KEY>."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
 
-        args, kwargs = fake_pipe.call_args
-        assert args[0] == "rendered-prompt"
-        assert kwargs["return_full_text"] is False
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "my-token"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
 
-    def test_propagates_exception_raised_by_pipeline(self, service: ModelService):
-        """Errors from the underlying pipeline call should not be swallowed."""
-        fake_pipe = MagicMock()
-        fake_pipe.tokenizer.apply_chat_template.return_value = "rendered-prompt"
-        fake_pipe.side_effect = ValueError("generation failed")
-        service._pipe = fake_pipe
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
+            service.generate_text([{"role": "user", "content": "Say hello"}])
 
-        with pytest.raises(ValueError, match="generation failed"):
+        request_obj = fake_urlopen.call_args.args[0]
+        assert request_obj.headers["Authorization"] == "Bearer my-token"
+
+    def test_invokes_http_chat_completions_with_expected_payload(self, service: ModelService):
+        """The HTTP body should include model, messages, and generation settings."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
+
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
             service.generate_text([{"role": "user", "content": "hi"}])
 
+        request_obj = fake_urlopen.call_args.args[0]
+        payload = json.loads(request_obj.data.decode("utf-8"))
+        assert payload["model"] == "openai.gpt-oss-120b-1:0"
+        assert payload["messages"] == [{"role": "user", "content": "hi"}]
+        assert payload["max_tokens"] == 4096
+        assert payload["temperature"] == 0.7
+        assert payload["top_p"] == 0.95
+        assert payload["top_k"] == 50
+
+    def test_propagates_exception_raised_by_http_client(self, service: ModelService):
+        """Errors from the HTTP client should not be swallowed."""
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with patch("app.api.ai.urlrequest.urlopen", side_effect=ValueError("generation failed")):
+            with pytest.raises(ValueError, match="generation failed"):
+                service.generate_text([{"role": "user", "content": "hi"}])
+
     def test_handles_empty_messages_list(self, service: ModelService):
-        """An empty messages list should still be forwarded to the chat template unchanged."""
-        fake_pipe = MagicMock()
-        fake_pipe.tokenizer.apply_chat_template.return_value = "rendered-prompt"
-        fake_pipe.return_value = [{"generated_text": "empty response"}]
-        service._pipe = fake_pipe
-
-        result = service.generate_text([])
-
-        fake_pipe.tokenizer.apply_chat_template.assert_called_once_with(
-            [],
-            tokenize=False,
-            add_generation_prompt=True,
+        """An empty message list should still invoke chat completions with a synthetic user message."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps({"choices": [{"message": {"content": "empty response"}}]}).encode(
+            "utf-8"
         )
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
+
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
+            result = service.generate_text([])
+
+        request_obj = fake_urlopen.call_args.args[0]
+        payload = json.loads(request_obj.data.decode("utf-8"))
+        assert payload["messages"] == [{"role": "user", "content": ""}]
         assert result == "empty response"
+
+    def test_raises_value_error_for_unsupported_message_role(self, service: ModelService):
+        """Only system/user/assistant roles are accepted by the service."""
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with pytest.raises(ValueError, match="Unsupported role"):
+            service.generate_text(
+                [
+                    {"role": "tool", "content": "unsupported"},
+                ]
+            )
+
+    def test_raises_value_error_when_chat_completions_returns_no_text(self, service: ModelService):
+        """A malformed response without content should fail clearly."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps({"choices": [{"message": {}}]}).encode("utf-8")
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
+
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
+            with pytest.raises(ValueError, match="Chat completions response did not include generated text"):
+                service.generate_text([{"role": "user", "content": "hi"}])
+
+    def test_includes_assistant_messages_in_history(self, service: ModelService):
+        """Assistant/system messages should be forwarded as chat history."""
+        fake_http_response = MagicMock()
+        fake_http_response.read.return_value = json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode("utf-8")
+        fake_urlopen = MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_http_response
+
+        service._model_id = "openai.gpt-oss-120b-1:0"
+        service._api_key = "secret"
+        service._api_url = "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1/chat/completions"
+
+        with patch("app.api.ai.urlrequest.urlopen", fake_urlopen):
+            service.generate_text(
+                [
+                    {"role": "system", "content": "You are helpful"},
+                    {"role": "assistant", "content": "Hello"},
+                    {"role": "user", "content": "Hi"},
+                ]
+            )
+        request_obj = fake_urlopen.call_args.args[0]
+        payload = json.loads(request_obj.data.decode("utf-8"))
+        assert payload["messages"] == [
+            {"role": "system", "content": "You are helpful"},
+            {"role": "assistant", "content": "Hello"},
+            {"role": "user", "content": "Hi"},
+        ]
 
 
 class TestJobDescriptionsDir:
