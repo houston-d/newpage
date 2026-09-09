@@ -17,6 +17,7 @@ class QueryJobBoardRequest(BaseModel):
 
 
 class QuerySource(BaseModel):
+    id: str
     title: str
     location: str
     company: str
