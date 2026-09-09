@@ -160,3 +160,9 @@ class TestHealthEndpoint:
         """Only GET is registered for '/health'; other methods should 405."""
         response = client.post("/health")
         assert response.status_code == 405
+
+
+class TestCors:
+    def test_get_jobs_includes_cors_header_for_browser_requests(self, client: TestClient):
+        response = client.get("/jobs", headers={"Origin": "http://localhost:5173"})
+        assert response.headers.get("access-control-allow-origin") == "*"

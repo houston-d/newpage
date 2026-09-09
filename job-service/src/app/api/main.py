@@ -1,9 +1,18 @@
 from fastapi import FastAPI, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from .ai import is_model_loaded, router as ai_router
+from .jobs import router as jobs_router
 from .schemas import ApiResponse
 
 app = FastAPI(title="NewPage API", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -28,3 +37,4 @@ def health(response: Response) -> ApiResponse:
 
 
 app.include_router(ai_router)
+app.include_router(jobs_router)

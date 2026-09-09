@@ -39,3 +39,4 @@ I will initially require the user to upload their CV and then paste in a JD. Thi
 - Will likely need to restructure the application
 - Lock on model for multiple users
 - update README with instructions for running the project locally
+- re-style webapp
