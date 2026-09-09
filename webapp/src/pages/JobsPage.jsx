@@ -4,9 +4,11 @@ import { Link } from "react-router-dom";
 import AiSummaryAccordion from "../components/AiSummaryAccordion";
 import { getJobs, queryJobBoardSummary } from "../services/api";
 import useAsyncResource from "../hooks/useAsyncResource";
+import { renderDescriptionWithBoldMarkdown } from "../services/renderText.jsx";
 
 const JOBS_SUMMARY_CACHE_KEY = "jobs-page";
-const JOB_DESCRIPTION_PREVIEW_LIMIT = 180;
+const JOB_DESCRIPTION_PREVIEW_LIMIT = 300;
+const EMPTY_SALARY_PLACEHOLDER = "\u00A0";
 
 function getJobDescriptionPreview(description) {
   if (typeof description !== "string") {
@@ -18,6 +20,14 @@ function getJobDescriptionPreview(description) {
   }
 
   return `${description.slice(0, JOB_DESCRIPTION_PREVIEW_LIMIT)}...`;
+}
+
+function getJobSalaryDisplay(salary) {
+  if (typeof salary !== "string" || salary.trim().length === 0) {
+    return EMPTY_SALARY_PLACEHOLDER;
+  }
+
+  return salary;
 }
 
 export default function JobsPage() {
@@ -54,8 +64,8 @@ export default function JobsPage() {
                   <span>{job.location}</span>
                 </div>
                 <h2>{job.title}</h2>
-                <p className="salary">{job.salary}</p>
-                <p className="description">{getJobDescriptionPreview(job.jd)}</p>
+                <p className="salary">{getJobSalaryDisplay(job.salary)}</p>
+                <p className="description">{renderDescriptionWithBoldMarkdown(getJobDescriptionPreview(job.jd))}</p>
                 <Link className="job-link" to={`/jobs/${encodeURIComponent(job.id)}`}>
                   View role
                 </Link>
@@ -67,6 +77,7 @@ export default function JobsPage() {
         )
       ) : null}
 
+      <hr className="back-link-divider" />
       <Link className="back-link" to="/health">
         View backend health
       </Link>

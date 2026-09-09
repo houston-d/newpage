@@ -30,6 +30,7 @@ describe("JobsPage", () => {
     renderJobsPage();
 
     expect(screen.getByRole("heading", { name: "Open roles", level: 1 })).toBeTruthy();
+    expect(screen.getByRole("separator")).toBeTruthy();
     expect(screen.getByRole("link", { name: "View backend health" }).getAttribute("href")).toBe("/health");
     expect(screen.getByRole("link", { name: "Open AI chat" }).getAttribute("href")).toBe("/chat");
   });
@@ -144,5 +145,27 @@ describe("JobsPage", () => {
 
     expect(await screen.findByText("Senior Engineer")).toBeTruthy();
     expect(screen.getByText(`${"A".repeat(180)}...`)).toBeTruthy();
+  });
+
+  it("renders a salary placeholder for empty salary values", async () => {
+    getJobs.mockResolvedValue([
+      {
+        id: "senior-engineer",
+        company: "NewPage",
+        location: "London",
+        title: "Senior Engineer",
+        salary: "",
+        jd: "Build APIs and services.",
+      },
+    ]);
+
+    renderJobsPage();
+
+    const salaryElement = (await screen.findByText("Senior Engineer"))
+      .closest(".job-card")
+      .querySelector(".salary");
+
+    expect(salaryElement).toBeTruthy();
+    expect(salaryElement.textContent).toBe("\u00A0");
   });
 });

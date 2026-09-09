@@ -101,6 +101,7 @@ h1 {
   margin: 0.8rem 0 0;
   color: #d5f2e2;
   white-space: pre-line;
+  font-size: 10px;
 }
 
 .job-card {
@@ -110,6 +111,8 @@ h1 {
   padding: 1.2rem;
   backdrop-filter: blur(4px);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+  display: flex;
+  flex-direction: column;
 }
 
 .job-meta {
@@ -135,7 +138,7 @@ h1 {
 .description {
   margin: 0.9rem 0 0;
   color: #d5f2e2;
-  font-size: 0.9rem;
+  font-size: 10px;
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -145,13 +148,21 @@ h1 {
 
 .job-link {
   display: inline-block;
-  margin-top: 1rem;
+  margin-top: auto;
+  padding-top: 1rem;
   font-weight: 600;
 }
 
 .back-link {
   display: inline-block;
   margin-top: 0.25rem;
+    font-size: 10px;
+}
+
+.back-link-divider {
+  border: 0;
+  border-top: 1px solid rgba(135, 230, 179, 0.24);
+  margin: 1.2rem 0 0.35rem;
 }
 
 .chat-nav-button {
@@ -337,4 +348,8 @@ h1 {
   padding: 0.6rem 1rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.detail-description {
+    font-size: 10px;
 }
