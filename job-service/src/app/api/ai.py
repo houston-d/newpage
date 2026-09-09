@@ -13,8 +13,16 @@ from typing import Any
 
 import torch
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
-from pydantic import BaseModel, Field
 from transformers import GenerationConfig, pipeline
+
+from .schemas import (
+    AnalyseJobRequest,
+    ApiResponse,
+    LoadModelRequest,
+    QueryJobBoardRequest,
+    QueryJobBoardResponse,
+    QuerySource,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,36 +53,6 @@ generation_config = GenerationConfig(
 )
 
 ALLOWED_MODELS = {"TinyLlama/TinyLlama-1.1B-Chat-v1.0"}
-
-
-class AnalyseJobRequest(BaseModel):
-    jd: str = Field(..., min_length=10, max_length=20000)
-
-
-class LoadModelRequest(BaseModel):
-    model: str = Field(..., min_length=1, max_length=200)
-
-
-class QueryJobBoardRequest(BaseModel):
-    query: str = Field(..., min_length=3, max_length=1000)
-    top_k: int = Field(default=3, ge=1, le=5)
-
-
-class QuerySource(BaseModel):
-    title: str
-    location: str
-    company: str
-    salary: str
-    source_file: str
-
-
-class ApiResponse(BaseModel):
-    status: int
-    message: str
-
-
-class QueryJobBoardResponse(ApiResponse):
-    sources: list[QuerySource] = Field(default_factory=list)
 
 
 class ModelService:
@@ -248,6 +226,21 @@ def is_model_loaded() -> bool:
 
 @router.post("/load_model")
 def load_model(payload: LoadModelRequest, response: Response, _: None = Depends(require_admin_api_key)) -> ApiResponse:
+    """Load a model into the shared model service for subsequent AI requests.
+
+    Requires a valid admin API key. Validates that the requested model is in the
+    allowed list before attempting to load it via ``model_service``.
+
+    Args:
+        payload: Request body containing the name of the ``model`` to load.
+        response: FastAPI response object, whose ``status_code`` is set to reflect
+            the outcome of the request.
+        _: Dependency that enforces admin API key authentication; unused otherwise.
+
+    Returns:
+        ApiResponse: ``status=200`` if the model loads successfully; ``status=400``
+        if the requested model is not permitted; ``status=500`` if loading fails.
+    """
     model = payload.model
 
     if model not in ALLOWED_MODELS:
@@ -269,6 +262,22 @@ def load_model(payload: LoadModelRequest, response: Response, _: None = Depends(
 
 @router.post("/analyse_job")
 def analyse_job(payload: AnalyseJobRequest, response: Response) -> ApiResponse:
+    """Analyse a job description using the currently loaded model.
+
+    Builds a system/user prompt pair from the "analyse_job" prompt template and the
+    job description supplied in ``payload.jd``, then generates a response via
+    ``model_service``.
+
+    Args:
+        payload: Request body containing the job description text (``jd``) to analyse.
+        response: FastAPI response object, whose ``status_code`` is set to reflect
+            the outcome of the request.
+
+    Returns:
+        ApiResponse: ``status=200`` with the generated analysis in ``message`` on
+        success; ``status=503`` if no model is loaded; ``status=500`` if generation
+        fails.
+    """
     if not model_service.is_loaded():
         logger.warning("Model not set")
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -291,6 +300,24 @@ def analyse_job(payload: AnalyseJobRequest, response: Response) -> ApiResponse:
 
 @router.post("/query_job_board")
 def query_job_board(payload: QueryJobBoardRequest, response: Response) -> QueryJobBoardResponse:
+    """Answer a natural-language query against the job board using retrieval-augmented generation.
+
+    Loads cached job descriptions, ranks them for relevance to ``payload.query``,
+    builds a RAG context from the top matches, and prompts the currently loaded
+    model to answer the query using only that context.
+
+    Args:
+        payload: Request body containing the user's ``query`` and ``top_k`` number
+            of relevant jobs to retrieve.
+        response: FastAPI response object, whose ``status_code`` is set to reflect
+            the outcome of the request.
+
+    Returns:
+        QueryJobBoardResponse: ``status=200`` with the generated answer in
+        ``message`` and the matched jobs in ``sources`` on success; ``status=503``
+        if no model is loaded; ``status=500`` if loading job descriptions or
+        generating the answer fails.
+    """
     if not model_service.is_loaded():
         logger.error("Model not set")
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
