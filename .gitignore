@@ -8,9 +8,9 @@
 **/build/
 
 # Node / React
-src/app/webapp/node_modules/
-src/app/webapp/build/
-src/app/webapp/dist/
+webapp/node_modules/
+webapp/build/
+webapp/dist/
 
 **/prompts/
 
