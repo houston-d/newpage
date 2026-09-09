@@ -38,3 +38,7 @@ torchaudio = {source = "pytorch-cu128"}
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["src/test"]
+pythonpath = ["src"]
