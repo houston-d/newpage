@@ -46,12 +46,6 @@ export default function ChatPage() {
   const isChatEnabled = hasCvText && !isExtractingCv && !isSendingMessage;
 
   useEffect(() => {
-    if (cvText) {
-      console.log(cvText);
-    }
-  }, [cvText]);
-
-  useEffect(() => {
     const chatMessagesContainer = chatMessagesRef.current;
     if (chatMessagesContainer) {
       chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
