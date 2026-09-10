@@ -1,5 +1,10 @@
-_# newpage
+# newpage
 
+_This file is entirely human-generated_
+
+This is the full README containing set up instructions and design.
+
+Please see [plan.md](./plan.md) for my thought process during development.
 
 ## Setup Instructions
 
@@ -204,6 +209,8 @@ The [Meta](./prompts/meta.md) prompt is one I received from a coworker which I h
 
 The [System Prompt Creator](./prompts/system-prompt-creator.md) prompt I created using the meta prompt to help me craft the prompts for this task. The outputs of my conversations with this prompt can be found in [prompts.json](./job-service/src/app/resources/prompts.json)
 
+The [Job Description](./prompts/job-description.md) prompt is the prompt used for generating the fake job listings created using the meta prompt.
+
 ### What I would do differently with more time
 
 - Use Jira combined with BDD to coherently create well-defined code in small increments
@@ -212,5 +219,6 @@ The [System Prompt Creator](./prompts/system-prompt-creator.md) prompt I created
 - Use terraform to deploy the system to AWS (including containerising the front end)
 - Use this opportunity to upskill by learning a new skill such as an alternate front end framework or elasticache
 - Ensure WCAG AAA web standards are met
+- Enable conditional loading of components (such as the generate summary) 
 
 

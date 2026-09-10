@@ -73,7 +73,7 @@ if torch.cuda.is_available():
 logger.debug("====================")
 
 router = APIRouter(prefix="/ai", tags=["ai"])
-ADMIN_API_KEY_ENV = "JOB_SERVICE_ADMIN_API_KEY"
+ADMIN_API_KEY_ENV = "SERVICE_KEY"
 
 prompts_path = os.path.join(os.path.dirname(__file__), os.pardir, "resources", "prompts.json")
 with open(prompts_path, encoding="utf-8") as f:
@@ -534,8 +534,13 @@ def _build_chat_retrieval_query(
 
 def require_admin_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
     configured_api_key = os.getenv(ADMIN_API_KEY_ENV)
+
     if not configured_api_key:
-        logger.error("Admin API key is not configured in %s", ADMIN_API_KEY_ENV)
+        logger.error(
+            "Admin API key is not configured in %s or %s",
+            ADMIN_API_KEY_ENV,
+            LEGACY_ADMIN_API_KEY_ENV,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin authentication is not configured",
