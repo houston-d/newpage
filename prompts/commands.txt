@@ -1,0 +1,21 @@
+poetry run uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+
+Invoke-RestMethod "http://127.0.0.1:8000/load_model?model=TinyLlama/TinyLlama-1.1B-Chat-v1.0" -Method Get
+
+Dougal@DESKTOP-CLRJ9PK MINGW64 /c/repos/newpage (feature/query-simple-model)
+$ curl -X POST "http://localhost:8000/analyse_job" -H "Content-Type: application/json" -d @job-descriptions/1.json
+
+$env:JOB_SERVICE_ADMIN_API_KEY = "admin"
+poetry run uvicorn app.api.main:app --reload --host 127.0.0.1 --port 8000 --app-dir src
+
+Invoke-RestMethod -Method POST "http://localhost:8000/ai/load_model" `
+   -Headers @{ "X-API-Key" = "admin" } `
+   -ContentType "application/json" `
+   -Body '{"model":"openai.gpt-oss-120b-1:0"}'
+
+curl -X POST "http://localhost:8000/ai/load_model" \
+  -H "X-API-Key: admin" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai.gpt-oss-120b-1:0"}'
+
+

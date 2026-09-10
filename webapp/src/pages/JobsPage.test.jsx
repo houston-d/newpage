@@ -137,14 +137,14 @@ describe("JobsPage", () => {
         location: "London",
         title: "Senior Engineer",
         salary: "£110k",
-        jd: "A".repeat(200),
+        jd: "A".repeat(400),
       },
     ]);
 
     renderJobsPage();
 
     expect(await screen.findByText("Senior Engineer")).toBeTruthy();
-    expect(screen.getByText(`${"A".repeat(180)}...`)).toBeTruthy();
+    expect(screen.getByText(`${"A".repeat(300)}...`)).toBeTruthy();
   });
 
   it("renders a salary placeholder for empty salary values", async () => {
