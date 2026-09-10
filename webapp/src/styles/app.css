@@ -315,6 +315,7 @@ h1 {
 
 .chat-message {
   margin: 0 0 0.65rem;
+  font-size: 10px;
 }
 
 .chat-message.user {
