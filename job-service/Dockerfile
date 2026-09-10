@@ -15,8 +15,9 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY . .
-RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
+RUN python -c "from pathlib import Path; p=Path('/app/docker-entrypoint.sh'); b=p.read_bytes(); b=b[3:] if b.startswith(b'\\xef\\xbb\\xbf') else b; p.write_bytes(b.replace(b'\\r\\n', b'\\n').replace(b'\\r', b'\\n'))" \
+    && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "/app/docker-entrypoint.sh"]

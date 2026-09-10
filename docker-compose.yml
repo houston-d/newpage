@@ -2,11 +2,14 @@ services:
   job-service:
     build:
       context: ./job-service
+    platform: ${JOB_SERVICE_PLATFORM:-linux/amd64}
+    env_file:
+      - ./job-service/.env
     container_name: newpage-job-service
     ports:
       - "8000:8000"
     environment:
-      JOB_SERVICE_ADMIN_API_KEY: ${JOB_SERVICE_ADMIN_API_KEY:-change-me}
+      JOB_SERVICE_ADMIN_API_KEY: ${JOB_SERVICE_ADMIN_API_KEY:-}
       JOB_SERVICE_INSTALL_DEPS_ON_STARTUP: ${JOB_SERVICE_INSTALL_DEPS_ON_STARTUP:-true}
       JOB_SERVICE_EMBEDDING_MODEL: ${JOB_SERVICE_EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
       PORT: 8000
