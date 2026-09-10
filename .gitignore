@@ -12,6 +12,4 @@ webapp/node_modules/
 webapp/build/
 webapp/dist/
 
-**/prompts/
-
 .idea/
