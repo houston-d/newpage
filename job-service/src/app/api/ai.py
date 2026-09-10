@@ -9,13 +9,15 @@ from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from dotenv import load_dotenv
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
 import torch
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 from sentence_transformers import SentenceTransformer
-from transformers import GenerationConfig, pipeline
 
 from .schemas import (
     AnalyseJobRequest,
@@ -28,6 +30,36 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_dotenv_path() -> str | None:
+    module_path = Path(__file__).resolve()
+    project_root = module_path.parents[3]
+
+    configured_path = os.getenv("JOB_SERVICE_DOTENV_PATH")
+    if configured_path:
+        candidate = Path(configured_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = (project_root / candidate).resolve()
+        if candidate.exists():
+            return str(candidate)
+        logger.warning("Configured dotenv path does not exist: %s", candidate)
+
+    candidates = (
+        project_root / ".env",
+        project_root.parent / ".env",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+dotenv_path = _resolve_dotenv_path()
+if dotenv_path:
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    load_dotenv()
 
 logger.debug("=== runtime diag ===")
 logger.debug("python:", sys.executable)
@@ -47,17 +79,15 @@ prompts_path = os.path.join(os.path.dirname(__file__), os.pardir, "resources", "
 with open(prompts_path, encoding="utf-8") as f:
     prompts = json.load(f)
 
-generation_config = GenerationConfig(
-    max_new_tokens=4096,
-    do_sample=True,
-    temperature=0.7,
-    top_k=50,
-    top_p=0.95,
-)
-
-ALLOWED_MODELS = {"TinyLlama/TinyLlama-1.1B-Chat-v1.0"}
+ALLOWED_MODELS = {"openai.gpt-oss-120b-1:0"}
 JOB_VECTOR_COLLECTION = "jobs"
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_MAX_OUTPUT_TOKENS = 4096
+DEFAULT_TEMPERATURE = 0.7
+DEFAULT_TOP_P = 0.95
+DEFAULT_TOP_K = 50
+DEFAULT_CHAT_COMPLETIONS_URL_TEMPLATE = "https://bedrock-runtime.{region}.amazonaws.com/openai/v1/chat/completions"
+DEFAULT_BEDROCK_REGION = "eu-west-1"
 
 
 def _qdrant_storage_path() -> Path:
@@ -200,41 +230,102 @@ class QdrantJobVectorDatabase:
 
 class ModelService:
     def __init__(self) -> None:
-        self._pipe: Any | None = None
+        self._model_id: str | None = None
+        self._api_key: str | None = None
+        self._api_url: str | None = None
         self._lock = threading.RLock()
 
     def is_loaded(self) -> bool:
         with self._lock:
-            return self._pipe is not None
+            return self._model_id is not None and self._api_key is not None and self._api_url is not None
 
     def load_model(self, model: str) -> None:
-        use_cuda = torch.cuda.is_available()
-        model_pipe = pipeline(
-            "text-generation",
-            model=model,
-            dtype=torch.bfloat16 if use_cuda else torch.float32,
-            device_map="auto" if use_cuda else None,
-        )
+        api_key = os.getenv("BEDROCK_API_KEY")
+        if not api_key:
+            raise RuntimeError("BEDROCK_API_KEY is not configured")
+        region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or DEFAULT_BEDROCK_REGION
+        default_api_url = DEFAULT_CHAT_COMPLETIONS_URL_TEMPLATE.format(region=region)
+        api_url = os.getenv("BEDROCK_API_URL", default_api_url)
+
         with self._lock:
-            self._pipe = model_pipe
+            self._model_id = model
+            self._api_key = api_key
+            self._api_url = api_url
 
     def generate_text(self, messages: list[dict[str, str]]) -> str:
         with self._lock:
-            if self._pipe is None:
+            if self._model_id is None or self._api_key is None or self._api_url is None:
                 raise RuntimeError("Model not loaded")
+            model_id = self._model_id
+            api_key = self._api_key
+            api_url = self._api_url
 
-            prompt = self._pipe.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-            outputs = self._pipe(
-                prompt,
-                generation_config=generation_config,
-                return_full_text=False,
-            )
+        chat_messages: list[dict[str, str]] = []
 
-        return outputs[0]["generated_text"]
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content", "")
+            if role in ("system", "user", "assistant"):
+                chat_messages.append({"role": role, "content": content})
+                continue
+            raise ValueError(f"Unsupported role: {role}")
+
+        if not chat_messages:
+            chat_messages = [{"role": "user", "content": ""}]
+
+        request_payload: dict[str, Any] = {
+            "model": model_id,
+            "messages": chat_messages,
+            "max_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
+            "temperature": DEFAULT_TEMPERATURE,
+            "top_p": DEFAULT_TOP_P,
+        }
+        if DEFAULT_TOP_K > 0:
+            request_payload["top_k"] = DEFAULT_TOP_K
+
+        request_data = json.dumps(request_payload).encode("utf-8")
+        request = urlrequest.Request(
+            api_url,
+            data=request_data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urlrequest.urlopen(request, timeout=60) as response:
+                response_payload = json.loads(response.read().decode("utf-8"))
+        except urlerror.HTTPError as exc:
+            error_text = ""
+            if exc.fp is not None:
+                error_text = exc.fp.read().decode("utf-8", errors="replace")
+            if exc.code == 401:
+                raise RuntimeError(
+                    "Unauthorized by upstream chat endpoint. Verify BEDROCK_API_KEY and BEDROCK_API_URL/region."
+                ) from exc
+            raise RuntimeError(f"Upstream chat endpoint error ({exc.code}): {error_text}") from exc
+
+        output_text: str | None = None
+        choices = response_payload.get("choices")
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                message = first_choice.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str):
+                        output_text = content
+                    elif isinstance(content, list):
+                        output_text = "".join(
+                            chunk.get("text", "")
+                            for chunk in content
+                            if isinstance(chunk, dict) and isinstance(chunk.get("text"), str)
+                        )
+        if not output_text:
+            raise ValueError("Chat completions response did not include generated text")
+
+        return _strip_reasoning_tags(output_text)
 
 
 def _job_descriptions_dir() -> Path:
@@ -243,6 +334,10 @@ def _job_descriptions_dir() -> Path:
 
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _strip_reasoning_tags(text: str) -> str:
+    return re.sub(r"<reasoning>.*?</reasoning>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
 
 
 def _normalize_job(raw_job: dict, source_file: str) -> dict[str, str]:
@@ -369,11 +464,61 @@ def _build_rag_context(jobs: list[dict[str, str]]) -> str:
     return "\n\n".join(context_chunks)
 
 
-def _build_chat_retrieval_query(cv: str, message_history: list[dict[str, str]]) -> str:
+def _extract_role_focus_from_message(user_message: str, jobs: list[dict[str, str]]) -> str | None:
+    lowered_message = user_message.casefold()
+    for job in jobs:
+        title = str(job.get("title", "")).strip()
+        company = str(job.get("company", "")).strip()
+        t = title and title.casefold() in lowered_message
+        c = company and company.casefold() in lowered_message
+
+        if t or c:
+            return title + company
+
+    role_match = re.search(
+        r"\b(?:for|about|as|regarding)\s+(?:an?\s+)?([a-z0-9][a-z0-9\s/&-]{1,80}?)\s+role\b",
+        user_message,
+        flags=re.IGNORECASE,
+    )
+    if role_match:
+        role_focus = role_match.group(1).strip()
+        if role_focus:
+            return role_focus
+
+    return None
+
+
+def _jobs_matching_role_focus(role_focus: str, jobs: list[dict[str, str]]) -> list[dict[str, str]]:
+    normalized_focus = role_focus.casefold().strip()
+    if not normalized_focus:
+        return []
+
+    focus_terms = set(_tokenize(role_focus))
+    matching_jobs = []
+    for job in jobs:
+        title = str(job.get("title", "")).strip()
+        normalized_title = title.casefold()
+        if normalized_focus in normalized_title:
+            matching_jobs.append(job)
+            continue
+
+        title_terms = set(_tokenize(title))
+        if focus_terms and focus_terms.issubset(title_terms):
+            matching_jobs.append(job)
+
+    return matching_jobs
+
+
+def _build_chat_retrieval_query(
+    cv: str,
+    message_history: list[dict[str, str]],
+    role_focus: str | None = None,
+) -> str:
     formatted_history = "\n".join(
         f"{message['role']}: {message['content']}" for message in message_history if message.get("content")
     )
-    return f"CV:\n{cv}\n\nConversation:\n{formatted_history}"
+    role_section = f"Role focus: {role_focus}\n\n" if role_focus else ""
+    return f"{role_section}CV:\n{cv}\n\nConversation:\n{formatted_history}"
 
 
 def require_admin_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
@@ -563,9 +708,6 @@ def chat(payload: ChatRequest, response: Response) -> ApiResponse:
         return ApiResponse(status=500, message="Unable to load job descriptions")
 
     message_history = [message.model_dump() for message in payload.message_history]
-    retrieval_query = _build_chat_retrieval_query(payload.cv, message_history)
-    relevant_jobs = _rank_relevant_jobs(retrieval_query, jobs, top_k=3)
-    rag_context = _build_rag_context(relevant_jobs) if relevant_jobs else "No relevant jobs were found."
     chat_prompt = prompts.get("chat", {})
 
     system_prompt = chat_prompt.get(
@@ -581,15 +723,33 @@ def chat(payload: ChatRequest, response: Response) -> ApiResponse:
             "role": "system",
             "content": (
                 f"{system_prompt}{payload.cv}\n\n"
-                f"Relevant jobs from the job board:\n{rag_context}\n\n"
-                "Use the conversation history and this context to answer the user."
+                "Use the conversation history and the provided retrieved job context to answer the user."
             ),
         }
     ]
     preface_prompt = chat_prompt.get("user", "").strip()
     if preface_prompt:
         messages.append({"role": "user", "content": preface_prompt})
-    messages.extend(message_history)
+
+    for index, chat_message in enumerate(message_history):
+        if chat_message.get("role") == "user":
+            conversation_so_far = message_history[: index + 1]
+            role_focus = _extract_role_focus_from_message(str(chat_message.get("content", "")), jobs)
+            candidate_jobs = _jobs_matching_role_focus(role_focus, jobs) if role_focus else jobs
+            retrieval_query = _build_chat_retrieval_query(payload.cv, conversation_so_far, role_focus=role_focus)
+            relevant_jobs = _rank_relevant_jobs(retrieval_query, candidate_jobs or jobs, top_k=3)
+            rag_context = _build_rag_context(relevant_jobs) if relevant_jobs else "No relevant jobs were found."
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant jobs from the job board for the latest user message:\n"
+                        f"{rag_context}"
+                    ),
+                }
+            )
+
+        messages.append(chat_message)
 
     try:
         output = model_service.generate_text(messages)

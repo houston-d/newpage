@@ -53,8 +53,14 @@ def test_chat_returns_generated_message_using_cv_and_history():
     (messages,), _ = mock_generate.call_args
     assert messages[0]["role"] == "system"
     assert "Senior engineer with Python and React experience." in messages[0]["content"]
-    assert "Relevant jobs from the job board:" in messages[0]["content"]
-    assert "Senior Backend Engineer" in messages[0]["content"]
+    rag_messages = [
+        message
+        for message in messages
+        if message["role"] == "system"
+        and "Relevant jobs from the job board for the latest user message:" in message["content"]
+    ]
+    assert len(rag_messages) == 2
+    assert "Senior Backend Engineer" in rag_messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": "I have uploaded it now."}
 
 
@@ -104,6 +110,29 @@ def test_chat_returns_500_when_generation_fails():
 
     assert result == ApiResponse(status=500, message="Unable to answer chat request")
     assert response.status_code == 500
+
+
+def test_chat_retrieval_is_role_focused_when_user_mentions_specific_role():
+    response = Response()
+    payload = ChatRequest(
+        cv="Engineer with React experience.",
+        message_history=[{"role": "user", "content": "Am I a fit for a Frontend Developer role?"}],
+    )
+
+    with (
+        patch("app.api.ai.model_service.is_loaded", return_value=True),
+        patch("app.api.ai._load_job_descriptions_cached", return_value=SAMPLE_JOBS),
+        patch("app.api.ai._rank_relevant_jobs", return_value=SAMPLE_JOBS[:1]) as mock_rank_jobs,
+        patch("app.api.ai.model_service.generate_text", return_value="Role-focused reply"),
+    ):
+        result = chat(payload, response)
+
+    assert result == ApiResponse(status=200, message="Role-focused reply")
+    assert response.status_code == 200
+    assert mock_rank_jobs.call_count == 1
+    _, candidate_jobs = mock_rank_jobs.call_args[0][0:2]
+    assert len(candidate_jobs) == 1
+    assert candidate_jobs[0]["title"] == "Frontend Developer"
 
 
 def test_chat_endpoint_accepts_cv_and_message_history():

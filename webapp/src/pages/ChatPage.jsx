@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { chatWithCv } from "../services/api";
+import {renderDescriptionWithBoldMarkdown} from "../services/renderText.jsx";
 
 if (!GlobalWorkerOptions.workerSrc) {
   GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -34,6 +35,7 @@ async function extractPdfText(file) {
 export default function ChatPage() {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState([]);
+  const chatMessagesRef = useRef(null);
   const [cvText, setCvText] = useState("");
   const [isExtractingCv, setIsExtractingCv] = useState(false);
   const [cvErrorMessage, setCvErrorMessage] = useState("");
@@ -48,6 +50,13 @@ export default function ChatPage() {
       console.log(cvText);
     }
   }, [cvText]);
+
+  useEffect(() => {
+    const chatMessagesContainer = chatMessagesRef.current;
+    if (chatMessagesContainer) {
+      chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    }
+  }, [messages]);
 
   const sendMessage = async (event) => {
     event.preventDefault();
@@ -156,11 +165,11 @@ export default function ChatPage() {
         {requiresCvUpload ? <p className="state">Upload a valid CV PDF to enable chat.</p> : null}
         {isSendingMessage ? <p className="state">AI is replying...</p> : null}
         {chatErrorMessage ? <p className="state error">{chatErrorMessage}</p> : null}
-        <div className="chat-messages">
+        <div className="chat-messages" ref={chatMessagesRef}>
           {messages.length === 0 ? <p className="state">Start the conversation.</p> : null}
           {messages.map((message, index) => (
             <p className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
-              <strong>{message.role === "assistant" ? "AI" : "You"}:</strong> {message.text}
+              <strong>{message.role === "assistant" ? "AI" : "You"}:</strong> {renderDescriptionWithBoldMarkdown(message.text)}
             </p>
           ))}
         </div>
