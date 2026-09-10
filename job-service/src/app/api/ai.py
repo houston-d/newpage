@@ -79,15 +79,24 @@ prompts_path = os.path.join(os.path.dirname(__file__), os.pardir, "resources", "
 with open(prompts_path, encoding="utf-8") as f:
     prompts = json.load(f)
 
-ALLOWED_MODELS = {"openai.gpt-oss-120b-1:0"}
-JOB_VECTOR_COLLECTION = "jobs"
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-DEFAULT_MAX_OUTPUT_TOKENS = 4096
-DEFAULT_TEMPERATURE = 0.7
-DEFAULT_TOP_P = 0.95
-DEFAULT_TOP_K = 50
-DEFAULT_CHAT_COMPLETIONS_URL_TEMPLATE = "https://bedrock-runtime.{region}.amazonaws.com/openai/v1/chat/completions"
-DEFAULT_BEDROCK_REGION = "eu-west-1"
+ALLOWED_MODELS = {
+    model.strip()
+    for model in os.getenv("JOB_SERVICE_ALLOWED_MODELS", "openai.gpt-oss-120b-1:0").split(",")
+    if model.strip()
+}
+if not ALLOWED_MODELS:
+    raise ValueError("JOB_SERVICE_ALLOWED_MODELS must contain at least one model identifier.")
+JOB_VECTOR_COLLECTION = os.getenv("JOB_SERVICE_VECTOR_COLLECTION", "jobs")
+DEFAULT_EMBEDDING_MODEL = os.getenv("JOB_SERVICE_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("JOB_SERVICE_MAX_OUTPUT_TOKENS", "4096"))
+DEFAULT_TEMPERATURE = float(os.getenv("JOB_SERVICE_TEMPERATURE", "0.7"))
+DEFAULT_TOP_P = float(os.getenv("JOB_SERVICE_TOP_P", "0.95"))
+DEFAULT_TOP_K = int(os.getenv("JOB_SERVICE_TOP_K", "3"))
+DEFAULT_CHAT_COMPLETIONS_URL_TEMPLATE = os.getenv(
+    "JOB_SERVICE_CHAT_COMPLETIONS_URL_TEMPLATE",
+    "https://bedrock-runtime.{region}.amazonaws.com/openai/v1/chat/completions",
+)
+DEFAULT_BEDROCK_REGION = os.getenv("JOB_SERVICE_BEDROCK_REGION", "eu-west-1")
 
 
 def _qdrant_storage_path() -> Path:
@@ -472,8 +481,10 @@ def _extract_role_focus_from_message(user_message: str, jobs: list[dict[str, str
         t = title and title.casefold() in lowered_message
         c = company and company.casefold() in lowered_message
 
-        if t or c:
-            return title + company
+        if t:
+            return title
+        if c:
+            return company
 
     role_match = re.search(
         r"\b(?:for|about|as|regarding)\s+(?:an?\s+)?([a-z0-9][a-z0-9\s/&-]{1,80}?)\s+role\b",
