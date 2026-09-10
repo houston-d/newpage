@@ -101,16 +101,30 @@ class TestLoadModelFunction:
 class TestLoadModelEndpoint:
     """HTTP-level tests exercising the route (including auth) as FastAPI would."""
 
+    @staticmethod
+    def _getenv_side_effect(service_key: str | None, legacy_key: str | None):
+        values = {
+            "SERVICE_KEY": service_key,
+            "JOB_SERVICE_ADMIN_API_KEY": legacy_key,
+        }
+        return lambda key, default=None: values.get(key, default)
+
     def test_post_without_api_key_is_unauthorized(self, client: TestClient):
         """Missing X-API-Key header should be rejected with 401."""
-        with patch("app.api.ai.os.getenv", return_value="test-admin-key"):
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=self._getenv_side_effect(service_key="test-admin-key", legacy_key=None),
+        ):
             response = client.post("/ai/load_model", json={"model": ALLOWED_MODEL})
 
         assert response.status_code == 401
 
     def test_post_with_wrong_api_key_is_unauthorized(self, client: TestClient):
         """An incorrect X-API-Key header should be rejected with 401."""
-        with patch("app.api.ai.os.getenv", return_value="test-admin-key"):
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=self._getenv_side_effect(service_key="test-admin-key", legacy_key=None),
+        ):
             response = client.post(
                 "/ai/load_model",
                 json={"model": ALLOWED_MODEL},
@@ -122,7 +136,10 @@ class TestLoadModelEndpoint:
     def test_post_with_valid_api_key_loads_allowed_model(self, client: TestClient):
         """A correct admin key and allowed model should succeed with 200."""
         with (
-            patch("app.api.ai.os.getenv", return_value="test-admin-key"),
+            patch(
+                "app.api.ai.os.getenv",
+                side_effect=self._getenv_side_effect(service_key="test-admin-key", legacy_key=None),
+            ),
             patch("app.api.ai.model_service.load_model") as mock_load,
         ):
             response = client.post(
@@ -137,14 +154,20 @@ class TestLoadModelEndpoint:
 
     def test_post_with_missing_body_field_returns_422(self, client: TestClient):
         """Payload missing the required 'model' field fails validation."""
-        with patch("app.api.ai.os.getenv", return_value="test-admin-key"):
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=self._getenv_side_effect(service_key="test-admin-key", legacy_key=None),
+        ):
             response = client.post("/ai/load_model", json={}, headers=ADMIN_HEADER)
 
         assert response.status_code == 422
 
     def test_post_returns_503_when_admin_key_not_configured(self, client: TestClient):
         """If the server has no admin key configured, auth is unavailable (503)."""
-        with patch("app.api.ai.os.getenv", return_value=None):
+        with patch(
+            "app.api.ai.os.getenv",
+            side_effect=self._getenv_side_effect(service_key=None, legacy_key=None),
+        ):
             response = client.post(
                 "/ai/load_model",
                 json={"model": ALLOWED_MODEL},
@@ -152,3 +175,21 @@ class TestLoadModelEndpoint:
             )
 
         assert response.status_code == 503
+
+    def test_post_uses_legacy_admin_key_when_service_key_missing(self, client: TestClient):
+        """Legacy admin key still authenticates when SERVICE_KEY is absent."""
+        with (
+            patch(
+                "app.api.ai.os.getenv",
+                side_effect=self._getenv_side_effect(service_key=None, legacy_key="test-admin-key"),
+            ),
+            patch("app.api.ai.model_service.load_model") as mock_load,
+        ):
+            response = client.post(
+                "/ai/load_model",
+                json={"model": ALLOWED_MODEL},
+                headers=ADMIN_HEADER,
+            )
+
+        mock_load.assert_called_once_with(ALLOWED_MODEL)
+        assert response.status_code == 200

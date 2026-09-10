@@ -11,3 +11,18 @@ export function getCachedSummary(cacheKey) {
 export function setCachedSummary(cacheKey, summary) {
   window.localStorage.setItem(getStorageKey(cacheKey), summary);
 }
+
+export function clearCachedSummaries() {
+  const keysToRemove = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(SUMMARY_CACHE_PREFIX)) {
+      keysToRemove.push(key);
+    }
+  }
+
+  for (const key of keysToRemove) {
+    window.localStorage.removeItem(key);
+  }
+}

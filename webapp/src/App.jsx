@@ -21,6 +21,7 @@ function JobDetailRoute() {
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<JobsPage />} />
       <Route path="/jobs" element={<JobsPage />} />
       <Route path="/health" element={<HealthStatusPage />} />
       <Route path="/chat" element={<ChatPage />} />
