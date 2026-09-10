@@ -464,11 +464,61 @@ def _build_rag_context(jobs: list[dict[str, str]]) -> str:
     return "\n\n".join(context_chunks)
 
 
-def _build_chat_retrieval_query(cv: str, message_history: list[dict[str, str]]) -> str:
+def _extract_role_focus_from_message(user_message: str, jobs: list[dict[str, str]]) -> str | None:
+    lowered_message = user_message.casefold()
+    for job in jobs:
+        title = str(job.get("title", "")).strip()
+        company = str(job.get("company", "")).strip()
+        t = title and title.casefold() in lowered_message
+        c = company and company.casefold() in lowered_message
+
+        if t or c:
+            return title + company
+
+    role_match = re.search(
+        r"\b(?:for|about|as|regarding)\s+(?:an?\s+)?([a-z0-9][a-z0-9\s/&-]{1,80}?)\s+role\b",
+        user_message,
+        flags=re.IGNORECASE,
+    )
+    if role_match:
+        role_focus = role_match.group(1).strip()
+        if role_focus:
+            return role_focus
+
+    return None
+
+
+def _jobs_matching_role_focus(role_focus: str, jobs: list[dict[str, str]]) -> list[dict[str, str]]:
+    normalized_focus = role_focus.casefold().strip()
+    if not normalized_focus:
+        return []
+
+    focus_terms = set(_tokenize(role_focus))
+    matching_jobs = []
+    for job in jobs:
+        title = str(job.get("title", "")).strip()
+        normalized_title = title.casefold()
+        if normalized_focus in normalized_title:
+            matching_jobs.append(job)
+            continue
+
+        title_terms = set(_tokenize(title))
+        if focus_terms and focus_terms.issubset(title_terms):
+            matching_jobs.append(job)
+
+    return matching_jobs
+
+
+def _build_chat_retrieval_query(
+    cv: str,
+    message_history: list[dict[str, str]],
+    role_focus: str | None = None,
+) -> str:
     formatted_history = "\n".join(
         f"{message['role']}: {message['content']}" for message in message_history if message.get("content")
     )
-    return f"CV:\n{cv}\n\nConversation:\n{formatted_history}"
+    role_section = f"Role focus: {role_focus}\n\n" if role_focus else ""
+    return f"{role_section}CV:\n{cv}\n\nConversation:\n{formatted_history}"
 
 
 def require_admin_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
@@ -658,9 +708,6 @@ def chat(payload: ChatRequest, response: Response) -> ApiResponse:
         return ApiResponse(status=500, message="Unable to load job descriptions")
 
     message_history = [message.model_dump() for message in payload.message_history]
-    retrieval_query = _build_chat_retrieval_query(payload.cv, message_history)
-    relevant_jobs = _rank_relevant_jobs(retrieval_query, jobs, top_k=3)
-    rag_context = _build_rag_context(relevant_jobs) if relevant_jobs else "No relevant jobs were found."
     chat_prompt = prompts.get("chat", {})
 
     system_prompt = chat_prompt.get(
@@ -676,15 +723,33 @@ def chat(payload: ChatRequest, response: Response) -> ApiResponse:
             "role": "system",
             "content": (
                 f"{system_prompt}{payload.cv}\n\n"
-                f"Relevant jobs from the job board:\n{rag_context}\n\n"
-                "Use the conversation history and this context to answer the user."
+                "Use the conversation history and the provided retrieved job context to answer the user."
             ),
         }
     ]
     preface_prompt = chat_prompt.get("user", "").strip()
     if preface_prompt:
         messages.append({"role": "user", "content": preface_prompt})
-    messages.extend(message_history)
+
+    for index, chat_message in enumerate(message_history):
+        if chat_message.get("role") == "user":
+            conversation_so_far = message_history[: index + 1]
+            role_focus = _extract_role_focus_from_message(str(chat_message.get("content", "")), jobs)
+            candidate_jobs = _jobs_matching_role_focus(role_focus, jobs) if role_focus else jobs
+            retrieval_query = _build_chat_retrieval_query(payload.cv, conversation_so_far, role_focus=role_focus)
+            relevant_jobs = _rank_relevant_jobs(retrieval_query, candidate_jobs or jobs, top_k=3)
+            rag_context = _build_rag_context(relevant_jobs) if relevant_jobs else "No relevant jobs were found."
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant jobs from the job board for the latest user message:\n"
+                        f"{rag_context}"
+                    ),
+                }
+            )
+
+        messages.append(chat_message)
 
     try:
         output = model_service.generate_text(messages)
